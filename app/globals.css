@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand — assignx.ai exact */
+  --color-brand-50: #f6edff;
+  --color-brand-100: #ede0ff;
+  --color-brand-300: #b98cff;
+  --color-brand-500: #7802df; /* primary purple */
+  --color-brand-700: #430596; /* dark purple */
+  --color-magenta: #ff0bd6; /* accent */
+  --color-indigo: #5b0eff;
+  --color-blue: #300fff;
+
+  /* Surfaces */
+  --color-surface: #ffffff;
+  --color-surface-2: #f8f7fa;
+  --color-surface-3: #f3f0f9;
+
+  /* Ink */
+  --color-ink-900: #161616;
+  --color-ink-700: #303030;
+  --color-ink-500: #6e6e6e;
+  --color-ink-300: #a0a0a0;
+
+  --color-line: #ececf1;
+  --color-success: #16a34a;
+
+  /* Fonts wired by next/font in layout.tsx */
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-inter-tight);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: var(--color-surface-2);
+    color: var(--color-ink-700);
+    font-family: var(--font-sans);
+    font-size: 17px;
+    font-weight: 500;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-display);
+    color: var(--color-ink-900);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  ::selection {
+    background-color: var(--color-brand-500);
+    color: white;
+  }
+}
+
+/* Shared utilities */
+.gradient-brand {
+  background-image: linear-gradient(67deg, #7802df, #ff0bd6);
+}
+.text-gradient-brand {
+  background-image: linear-gradient(90deg, #7802df, #ff0bd6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 20px;
+}
+
+/* Custom scrollbar to match the brand */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #e3def0;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #c9bff0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

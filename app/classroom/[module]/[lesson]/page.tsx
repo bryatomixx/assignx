@@ -1,0 +1,211 @@
+"use client";
+
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  ClipboardCheck,
+  Clock,
+  Download,
+  Play,
+} from "lucide-react";
+import { hasHomework } from "@/lib/mock/modules";
+import { getModule } from "@/lib/mock/modules";
+import { useAcademy } from "@/lib/store/AcademyProvider";
+import { Button } from "@/components/ui/Button";
+import { LessonSections } from "@/components/classroom/LessonSections";
+import { LockedGate } from "@/components/classroom/LockedGate";
+import { cn } from "@/lib/utils";
+
+export default function LessonPage() {
+  const { module: slug, lesson: lessonId } = useParams<{
+    module: string;
+    lesson: string;
+  }>();
+  const {
+    ready,
+    canAccess,
+    isComplete,
+    toggleComplete,
+    isHomeworkDone,
+    toggleHomework,
+  } = useAcademy();
+
+  const module = getModule(slug);
+  if (!module) return <div className="p-8 text-ink-300">Not found.</div>;
+  if (!ready) return <div className="p-8 text-ink-300">Loading…</div>;
+  if (!canAccess(module)) return <LockedGate module={module} />;
+
+  const index = module.lessons.findIndex((l) => l.id === lessonId);
+  const lesson = module.lessons[index];
+  if (!lesson) return <div className="p-8 text-ink-300">Lesson not found.</div>;
+
+  const prev = index > 0 ? module.lessons[index - 1] : null;
+  const next =
+    index < module.lessons.length - 1 ? module.lessons[index + 1] : null;
+  const done = isComplete(lesson.id);
+  const lessonHasHomework = hasHomework(lesson);
+  const hwDone = isHomeworkDone(lesson.id);
+
+  return (
+    <div className="mx-auto max-w-3xl px-5 py-8 sm:px-8 sm:py-12">
+      <Link
+        href={`/classroom/${module.slug}`}
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-500 transition-colors hover:text-ink-900"
+      >
+        <ArrowLeft className="h-4 w-4" /> {module.title}
+      </Link>
+
+      <motion.div
+        key={lesson.id}
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="mt-4"
+      >
+        {/* Video placeholder */}
+        <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-3xl border border-line">
+          <div
+            className="absolute inset-0 opacity-95"
+            style={{ backgroundImage: module.accent }}
+          />
+          <div className="relative flex flex-col items-center gap-3 text-white">
+            <motion.span
+              whileHover={{ scale: 1.08 }}
+              className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-white/20 backdrop-blur"
+            >
+              <Play className="h-7 w-7 translate-x-0.5" fill="white" />
+            </motion.span>
+            <span className="text-sm font-medium text-white/80">
+              Video coming soon
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center gap-1.5 text-xs text-ink-300">
+          <Clock className="h-3.5 w-3.5" /> {lesson.durationMin} min · Lesson{" "}
+          {index + 1} of {module.lessons.length}
+        </div>
+        <h1 className="mt-2 text-2xl sm:text-3xl">{lesson.title}</h1>
+        {lesson.subtitle && (
+          <p className="mt-1 text-sm font-medium text-brand-500">
+            {lesson.subtitle}
+          </p>
+        )}
+
+        <div className="mt-5 whitespace-pre-line leading-relaxed text-ink-700">
+          {lesson.content}
+        </div>
+
+        {lesson.sections && lesson.sections.length > 0 && (
+          <LessonSections sections={lesson.sections} />
+        )}
+
+        {/* Resources */}
+        {lesson.resources.length > 0 && (
+          <div className="mt-7">
+            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-500">
+              Resources
+            </h3>
+            <div className="flex flex-col gap-2">
+              {lesson.resources.map((r) => (
+                <a
+                  key={r.id}
+                  href={r.href}
+                  className="group flex items-center gap-3 rounded-xl border border-line bg-white px-4 py-3 text-sm font-medium text-ink-700 transition-colors hover:border-brand-300"
+                >
+                  <Download className="h-4 w-4 text-brand-500" />
+                  {r.label}
+                  <ArrowRight className="ml-auto h-4 w-4 text-ink-300 transition-transform group-hover:translate-x-0.5" />
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Complete */}
+        <div className="mt-8">
+          <Button
+            variant={done ? "secondary" : "primary"}
+            size="lg"
+            onClick={() => toggleComplete(lesson.id)}
+            className="w-full"
+          >
+            <AnimatePresence mode="wait" initial={false}>
+              {done ? (
+                <motion.span
+                  key="done"
+                  initial={{ scale: 0.6, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 16 }}
+                  className="flex items-center gap-2"
+                >
+                  <Check className="h-5 w-5 text-success" /> Completed —
+                  click to undo
+                </motion.span>
+              ) : (
+                <motion.span
+                  key="todo"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex items-center gap-2"
+                >
+                  Mark as complete
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </Button>
+
+          {lessonHasHomework && (
+            <button
+              onClick={() => toggleHomework(lesson.id)}
+              className={cn(
+                "mt-3 flex w-full items-center justify-center gap-2 rounded-[9px] border px-5 py-3 text-[15px] font-medium transition-colors",
+                hwDone
+                  ? "border-success/30 bg-success/10 text-success"
+                  : "border-line bg-white text-ink-700 hover:border-brand-300",
+              )}
+            >
+              <ClipboardCheck className="h-5 w-5" />
+              {hwDone ? "Homework done — click to undo" : "Mark homework as done"}
+            </button>
+          )}
+        </div>
+
+        {/* Prev / next */}
+        <div className="mt-6 flex items-center justify-between gap-3">
+          {prev ? (
+            <Link
+              href={`/classroom/${module.slug}/${prev.id}`}
+              className="flex items-center gap-1.5 text-sm font-medium text-ink-500 hover:text-ink-900"
+            >
+              <ArrowLeft className="h-4 w-4" /> Previous
+            </Link>
+          ) : (
+            <span />
+          )}
+          {next ? (
+            <Link
+              href={`/classroom/${module.slug}/${next.id}`}
+              className={cn(
+                "flex items-center gap-1.5 text-sm font-semibold text-brand-500",
+              )}
+            >
+              Next lesson <ArrowRight className="h-4 w-4" />
+            </Link>
+          ) : (
+            <Link
+              href={`/classroom/${module.slug}`}
+              className="flex items-center gap-1.5 text-sm font-semibold text-brand-500"
+            >
+              Back to module <ArrowRight className="h-4 w-4" />
+            </Link>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
