@@ -59,7 +59,7 @@ export function ModuleCard({ module, index }: { module: Module; index: number })
           <div className="mt-auto pt-5">
             {locked ? (
               <span className="flex items-center gap-1.5 text-sm font-semibold text-ink-500">
-                <Lock className="h-4 w-4" /> Partner-only · coming soon
+                <Lock className="h-4 w-4" /> Partner-only
               </span>
             ) : (
               <>

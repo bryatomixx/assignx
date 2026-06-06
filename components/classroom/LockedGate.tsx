@@ -38,8 +38,8 @@ export function LockedGate({ module }: { module?: Module }) {
             {module ? module.title : "This module"} is locked
           </h1>
           <p className="max-w-md text-white/85">
-            A partner-only module — coming soon. For now, keep building with the
-            free course.
+            This is a partner-only module. Ask your AssignX admin to unlock it,
+            or keep building with the free course.
           </p>
           <Link href="/classroom/30-day-challenge" className="mt-2">
             <Button variant="secondary" size="lg">

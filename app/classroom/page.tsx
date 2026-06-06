@@ -27,7 +27,7 @@ export default function ClassroomPage() {
         </h1>
         <p className="mt-2 max-w-xl text-ink-500">
           Build and sell AI agents the AssignX way. Start with the free 30 Days
-          Challenge — more partner modules coming soon.
+          Challenge — partner modules unlock with full access.
         </p>
 
         <div className="mt-6 max-w-md rounded-2xl border border-line bg-white p-4">
