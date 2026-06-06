@@ -28,7 +28,7 @@ export function ModuleCard({ module, index }: { module: Module; index: number })
           className="relative flex h-32 items-center justify-center"
           style={{ backgroundImage: module.accent }}
         >
-          <span className="text-5xl drop-shadow-sm">{module.coverEmoji}</span>
+          <module.Icon className="h-12 w-12 text-white drop-shadow-sm" strokeWidth={1.75} />
           {locked && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/35 backdrop-blur-[2px]">
               <span className="flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1 text-sm font-semibold text-ink-900">

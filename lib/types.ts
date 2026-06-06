@@ -1,3 +1,5 @@
+import type { LucideIcon } from "lucide-react";
+
 export type Role = "admin" | "student";
 export type Tier = "free" | "paid";
 export type Status = "active" | "paused";
@@ -53,7 +55,7 @@ export interface Module {
   description: string;
   order: number;
   access: Tier;
-  coverEmoji: string;
+  Icon: LucideIcon; // lucide cover icon
   accent: string; // gradient css for the cover
   lessons: Lesson[];
 }

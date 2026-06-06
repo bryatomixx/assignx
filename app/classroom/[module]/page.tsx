@@ -49,7 +49,7 @@ export default function ModulePage() {
           className="flex items-center gap-4 p-6"
           style={{ backgroundImage: module.accent }}
         >
-          <span className="text-5xl">{module.coverEmoji}</span>
+          <module.Icon className="h-12 w-12 text-white" strokeWidth={1.75} />
           <div className="text-white">
             <h1 className="text-2xl text-white sm:text-3xl">{module.title}</h1>
             <p className="mt-1 text-sm text-white/85">

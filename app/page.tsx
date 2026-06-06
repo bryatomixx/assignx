@@ -12,6 +12,12 @@ import {
   Bot,
   Sparkles,
   PlayCircle,
+  Home,
+  ShieldCheck,
+  Stethoscope,
+  Smile,
+  Wrench,
+  ShoppingBag,
 } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/Button";
@@ -52,12 +58,12 @@ const agentTypes = [
 ];
 
 const industries = [
-  { emoji: "🏠", label: "Real Estate" },
-  { emoji: "🛡️", label: "Insurance" },
-  { emoji: "💆", label: "Medspa & Clinics" },
-  { emoji: "🦷", label: "Dental" },
-  { emoji: "🔧", label: "Local Services" },
-  { emoji: "🛒", label: "E-commerce" },
+  { Icon: Home, label: "Real Estate" },
+  { Icon: ShieldCheck, label: "Insurance" },
+  { Icon: Stethoscope, label: "Medspa & Clinics" },
+  { Icon: Smile, label: "Dental" },
+  { Icon: Wrench, label: "Local Services" },
+  { Icon: ShoppingBag, label: "E-commerce" },
 ];
 
 const weeks = [
@@ -221,7 +227,7 @@ export default function Landing() {
               transition={{ duration: 0.4, delay: i * 0.05 }}
               className="flex items-center gap-2 rounded-full border border-line bg-white px-5 py-2.5 text-[15px] font-medium text-ink-700"
             >
-              <span className="text-xl">{n.emoji}</span>
+              <n.Icon className="h-[18px] w-[18px] text-brand-500" />
               {n.label}
             </motion.span>
           ))}

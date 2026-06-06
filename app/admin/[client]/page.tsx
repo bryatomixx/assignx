@@ -156,7 +156,7 @@ function ClientDetail() {
                 className="flex h-9 w-9 items-center justify-center rounded-xl text-lg"
                 style={{ backgroundImage: m.accent }}
               >
-                {m.coverEmoji}
+                <m.Icon className="h-5 w-5 text-white" strokeWidth={1.75} />
               </span>
               <span className="flex-1 truncate font-medium text-ink-900">
                 {m.title}
@@ -179,7 +179,7 @@ function ClientDetail() {
                 className="flex h-9 w-9 items-center justify-center rounded-xl text-lg"
                 style={{ backgroundImage: m.accent }}
               >
-                {m.coverEmoji}
+                <m.Icon className="h-5 w-5 text-white" strokeWidth={1.75} />
               </span>
               <span className="flex-1 truncate font-medium text-ink-900">
                 {m.title}
@@ -224,10 +224,10 @@ function ClientDetail() {
             >
               <div className="flex items-center gap-3">
                 <span
-                  className="flex h-10 w-10 items-center justify-center rounded-xl text-xl"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl"
                   style={{ backgroundImage: m.accent }}
                 >
-                  {m.coverEmoji}
+                  <m.Icon className="h-5 w-5 text-white" strokeWidth={1.75} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <span className="truncate font-semibold text-ink-900">

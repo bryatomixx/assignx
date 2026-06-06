@@ -1,3 +1,5 @@
+import { Rocket, TrendingUp, Mic, Building2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { Module, Lesson, Bullet } from "@/lib/types";
 
 /** Tiny helper to build bullet trees readably. */
@@ -504,7 +506,7 @@ export const COURSE: Module = {
     "The free AssignX Agency Partner course — a 4-week path from setup to launch. Orientation plus weekly lessons, each with material and homework.",
   order: 1,
   access: "free",
-  coverEmoji: "🚀",
+  Icon: Rocket,
   accent: "linear-gradient(135deg,#7802DF,#FF0BD6)",
   lessons: courseLessons,
 };
@@ -516,7 +518,7 @@ const paidModule = (
   title: string,
   description: string,
   order: number,
-  emoji: string,
+  icon: LucideIcon,
   accent: string,
   lessonTitles: string[],
 ): Module => ({
@@ -526,7 +528,7 @@ const paidModule = (
   description,
   order,
   access: "paid",
-  coverEmoji: emoji,
+  Icon: icon,
   accent,
   lessons: lessonTitles.map((t, i) => ({
     id: `${slug}-l${i + 1}`,
@@ -545,7 +547,7 @@ const advancedModules: Module[] = [
     "Agency Scaling System",
     "The operating system to go from 5 to 50 clients without breaking. SOPs, hiring, and delivery at scale.",
     2,
-    "📈",
+    TrendingUp,
     "linear-gradient(135deg,#7802DF,#5B0EFF)",
     [
       "The Delivery Machine: SOPs & Templates",
@@ -561,7 +563,7 @@ const advancedModules: Module[] = [
     "Advanced Voice Agents",
     "Deep-dive into human-grade voice: latency, barge-in, lag compensation, and enterprise call flows.",
     3,
-    "🎙️",
+    Mic,
     "linear-gradient(135deg,#430596,#FF0BD6)",
     [
       "Voice Architecture & Latency",
@@ -576,7 +578,7 @@ const advancedModules: Module[] = [
     "Closing Enterprise Deals",
     "Sell five-figure agent deployments to bigger companies — procurement, security reviews, and pilots.",
     4,
-    "🏢",
+    Building2,
     "linear-gradient(135deg,#7802DF,#300FFF)",
     [
       "Mapping the Enterprise Buyer",
