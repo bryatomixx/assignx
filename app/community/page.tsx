@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, Clock, Shield, Trash2, Users2 } from "lucide-react";
 import { PostComposer } from "@/components/community/PostComposer";
 import { PostCard } from "@/components/community/PostCard";
+import { TopContributors } from "@/components/community/TopContributors";
 import { useBoard } from "@/lib/store/BoardProvider";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { cn } from "@/lib/utils";
@@ -56,6 +57,11 @@ export default function CommunityPage() {
             )}
           </Link>
         )}
+      </div>
+
+      {/* Top contributors leaderboard */}
+      <div className="mb-5">
+        <TopContributors />
       </div>
 
       {/* Post composer */}

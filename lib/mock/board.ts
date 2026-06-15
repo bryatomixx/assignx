@@ -100,6 +100,35 @@ export const SEED_POSTS: Post[] = [
     rejectedBy: null,
     rejectedAt: null,
   },
+  // Recent approved posts so the "This week" leaderboard has data (week of 2026-06-15)
+  {
+    id: "post-6",
+    authorId: "u-jon",
+    body: "Week 6 update: just landed my second retainer client using the outreach sequence from Module 4. The AI follow-up cadence is a game changer.",
+    mediaType: "text",
+    mediaPayload: null,
+    status: "approved",
+    pinned: false,
+    createdAt: "2026-06-13T11:00:00.000Z",
+    approvedBy: "u-admin",
+    approvedAt: "2026-06-13T11:05:00.000Z",
+    rejectedBy: null,
+    rejectedAt: null,
+  },
+  {
+    id: "post-7",
+    authorId: "u-michelle",
+    body: "Sharing my onboarding checklist for new GHL sub-accounts. Cut my setup time in half. Happy to answer questions!",
+    mediaType: "link",
+    mediaPayload: "https://docs.google.com/spreadsheets/d/example",
+    status: "approved",
+    pinned: false,
+    createdAt: "2026-06-14T09:30:00.000Z",
+    approvedBy: "u-admin",
+    approvedAt: "2026-06-14T09:32:00.000Z",
+    rejectedBy: null,
+    rejectedAt: null,
+  },
 ];
 
 export const SEED_COMMENTS: Comment[] = [
@@ -134,6 +163,31 @@ export const SEED_COMMENTS: Comment[] = [
     body: "A2P took about 5 business days for me. Make sure your Trust Hub business profile is 100% complete before submitting.",
     pinned: false,
     createdAt: "2026-05-20T09:45:00.000Z",
+  },
+  // Recent comments (week of 2026-06-15) to populate the weekly leaderboard
+  {
+    id: "comment-5",
+    postId: "post-6",
+    authorId: "u-michelle",
+    body: "Congrats Jon! Which outreach channel converted best for you - email or SMS?",
+    pinned: false,
+    createdAt: "2026-06-13T12:15:00.000Z",
+  },
+  {
+    id: "comment-6",
+    postId: "post-6",
+    authorId: "u-test",
+    body: "This is inspiring. I am starting Module 4 today after seeing this.",
+    pinned: false,
+    createdAt: "2026-06-13T13:40:00.000Z",
+  },
+  {
+    id: "comment-7",
+    postId: "post-7",
+    authorId: "u-jon",
+    body: "Michelle this is gold. Bookmarked. Any chance you cover the A2P registration step in there?",
+    pinned: false,
+    createdAt: "2026-06-14T10:05:00.000Z",
   },
 ];
 

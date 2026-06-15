@@ -22,6 +22,13 @@ import type {
   NotificationType,
 } from "@/lib/types";
 import {
+  computeStats,
+  leaderboard as pureLeaderboard,
+  levelFor,
+  badgesFor,
+} from "@/lib/community/gamification";
+import type { LeaderboardEntry, UserStats, Badge, LevelInfo } from "@/lib/community/gamification";
+import {
   loadPosts,
   savePosts,
   loadComments,
@@ -133,6 +140,17 @@ interface BoardContextValue {
 
   // Cascade delete (purge all board data for a user)
   purgeUser: (userId: string) => void;
+
+  // Gamification
+  leaderboard: (range: "all" | "week") => LeaderboardEntry[];
+  gamificationFor: (userId: string) => {
+    points: number;
+    level: number;
+    levelName: string;
+    nextAt: number | null;
+    badges: Badge[];
+    stats: UserStats;
+  };
 }
 
 const BoardContext = createContext<BoardContextValue | null>(null);
@@ -1021,6 +1039,44 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     [posts],
   );
 
+  // ---- Gamification ----
+
+  const leaderboardFn = useCallback(
+    (range: "all" | "week"): LeaderboardEntry[] => {
+      const userIds = academy.users.map((u) => u.id);
+      const data = { posts, comments, likes, follows };
+      return pureLeaderboard(userIds, data, range, Date.now());
+    },
+    [academy.users, posts, comments, likes, follows],
+  );
+
+  const gamificationFor = useCallback(
+    (
+      userId: string,
+    ): {
+      points: number;
+      level: number;
+      levelName: string;
+      nextAt: number | null;
+      badges: Badge[];
+      stats: UserStats;
+    } => {
+      const data = { posts, comments, likes, follows };
+      const stats = computeStats(userId, data, "all", Date.now());
+      const lvlInfo: LevelInfo = levelFor(stats.points);
+      const badges = badgesFor(stats);
+      return {
+        points: stats.points,
+        level: lvlInfo.level,
+        levelName: lvlInfo.name,
+        nextAt: lvlInfo.nextAt,
+        badges,
+        stats,
+      };
+    },
+    [posts, comments, likes, follows],
+  );
+
   // ---- Context value ----
 
   const value = useMemo<BoardContextValue>(
@@ -1080,6 +1136,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       markNotificationRead,
       markAllNotificationsRead,
       purgeUser,
+      leaderboard: leaderboardFn,
+      gamificationFor,
     }),
     [
       ready,
@@ -1137,6 +1195,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       markNotificationRead,
       markAllNotificationsRead,
       purgeUser,
+      leaderboardFn,
+      gamificationFor,
     ],
   );
 
