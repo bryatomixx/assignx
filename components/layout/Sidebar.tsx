@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { GraduationCap, RotateCcw, Sparkles, Users2 } from "lucide-react";
+import {
+  GraduationCap,
+  RotateCcw,
+  ShieldCheck,
+  Sparkles,
+  Users2,
+} from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { Avatar } from "@/components/ui/Avatar";
 import { ProgressBar } from "@/components/ui/ProgressBar";
@@ -20,6 +26,10 @@ export function Sidebar() {
   const nav = [
     { href: "/classroom", label: "Classroom", icon: GraduationCap },
     { href: "/community", label: "Community", icon: Users2 },
+    // Admin panel is only linked for admins (mods moderate from /community/moderation)
+    ...(currentUser.role === "admin"
+      ? [{ href: "/admin", label: "Admin", icon: ShieldCheck }]
+      : []),
   ];
 
   return (
