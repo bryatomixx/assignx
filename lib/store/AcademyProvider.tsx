@@ -8,18 +8,20 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { Module, ModuleProgress, Status, User } from "@/lib/types";
+import type { Module, ModuleProgress, Status, User, VideoProgress } from "@/lib/types";
 import { MODULES, TOTAL_LESSONS } from "@/lib/mock/modules";
 import {
   loadCurrentUserId,
   loadHomework,
   loadProgress,
   loadUsers,
+  loadVideoProgress,
   resetDemo as clearStorage,
   saveCurrentUserId,
   saveHomework,
   saveProgress,
   saveUsers,
+  saveVideoProgress,
 } from "@/lib/store/storage";
 
 const PAID_MODULE_IDS = MODULES.filter((m) => m.access === "paid").map(
@@ -55,6 +57,14 @@ interface AcademyContextValue {
   lockAll: (userId: string) => void;
   setStatus: (userId: string, status: Status) => void;
   removeUser: (userId: string) => void;
+  // video progress ("furthest point watched" per clip)
+  videoProgressFor: (userId: string, lessonId: string) => VideoProgress[];
+  recordVideoProgress: (
+    lessonId: string,
+    clipIndex: number,
+    elapsedSec: number,
+    durationSec: number,
+  ) => void;
   // demo
   resetDemo: () => void;
 }
@@ -67,6 +77,8 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
   const [progressMap, setProgressMap] = useState<Record<string, string[]>>({});
   const [homeworkMap, setHomeworkMap] = useState<Record<string, string[]>>({});
   const [currentUserId, setCurrentUserId] = useState<string>("");
+  // Keyed by "${userId}:${lessonId}:${clipIndex}"
+  const [videoProgressMap, setVideoProgressMap] = useState<Record<string, VideoProgress>>({});
 
   // Hydrate from localStorage on mount (client only).
   useEffect(() => {
@@ -77,6 +89,11 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
     const hw: Record<string, string[]> = {};
     for (const row of loadHomework()) hw[row.userId] = row.doneLessonIds;
     setHomeworkMap(hw);
+    const vpm: Record<string, VideoProgress> = {};
+    for (const row of loadVideoProgress()) {
+      vpm[`${row.userId}:${row.lessonId}:${row.clipIndex}`] = row;
+    }
+    setVideoProgressMap(vpm);
     setCurrentUserId(loadCurrentUserId());
     setReady(true);
   }, []);
@@ -294,6 +311,44 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  // ---- video progress ----
+
+  const recordVideoProgress = useCallback(
+    (
+      lessonId: string,
+      clipIndex: number,
+      elapsedSec: number,
+      durationSec: number,
+    ) => {
+      if (!currentUserId) return;
+      const key = `${currentUserId}:${lessonId}:${clipIndex}`;
+      setVideoProgressMap((prev) => {
+        const existing = prev[key];
+        // Only advance; never let elapsed go backwards
+        if (existing && existing.elapsedSec >= elapsedSec) return prev;
+        const entry: VideoProgress = {
+          userId: currentUserId,
+          lessonId,
+          clipIndex,
+          elapsedSec,
+          durationSec,
+        };
+        const next = { ...prev, [key]: entry };
+        saveVideoProgress(Object.values(next));
+        return next;
+      });
+    },
+    [currentUserId],
+  );
+
+  const videoProgressFor = useCallback(
+    (userId: string, lessonId: string): VideoProgress[] =>
+      Object.values(videoProgressMap).filter(
+        (vp) => vp.userId === userId && vp.lessonId === lessonId,
+      ),
+    [videoProgressMap],
+  );
+
   const currentUser = useMemo<User | undefined>(
     () => users.find((u) => u.id === currentUserId) ?? users[0],
     [users, currentUserId],
@@ -329,6 +384,8 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
       lockAll,
       setStatus,
       removeUser,
+      videoProgressFor,
+      recordVideoProgress,
       resetDemo,
     }),
     [
@@ -354,6 +411,8 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
       lockAll,
       setStatus,
       removeUser,
+      videoProgressFor,
+      recordVideoProgress,
       resetDemo,
     ],
   );

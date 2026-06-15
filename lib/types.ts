@@ -85,3 +85,62 @@ export interface ModuleProgress {
   completed: number;
   pct: number; // 0-100
 }
+
+// ---- Community Board types ----
+
+export type PostStatus = "pending" | "approved" | "rejected";
+export type PostMediaType = "text" | "image" | "video" | "link";
+
+export interface Post {
+  id: string;
+  authorId: string;
+  body: string;
+  mediaType: PostMediaType;
+  mediaPayload: string | null; // URL for 'link'; null placeholder for image/video (Supabase later)
+  status: PostStatus;
+  pinned: boolean;
+  createdAt: string; // ISO
+}
+
+export interface Comment {
+  id: string;
+  postId: string;
+  authorId: string;
+  body: string;
+  pinned: boolean;
+  createdAt: string; // ISO
+}
+
+export interface Like {
+  userId: string;
+  postId: string;
+}
+
+export interface Follow {
+  followerId: string;
+  followeeId: string;
+}
+
+export interface CommunitySettings {
+  globalApproval: boolean;
+  autoApproveUserIds: string[];
+}
+
+export interface ModPermissions {
+  canApprovePosts: boolean;
+  canDeletePosts: boolean;
+  canDeleteComments: boolean;
+  canPinContent: boolean;
+  canManageApproval: boolean;
+}
+
+export type CommunityRole = "admin" | "mod" | "student";
+
+/** Furthest position watched per clip per user. Keyed map persisted as array. */
+export interface VideoProgress {
+  userId: string;
+  lessonId: string;
+  clipIndex: number;
+  elapsedSec: number;
+  durationSec: number;
+}

@@ -48,12 +48,12 @@ const agentTypes = [
   {
     icon: Headphones,
     title: "Voice Receptionist",
-    desc: "Answers and routes inbound calls 24/7 — like a human front desk.",
+    desc: "Answers and routes inbound calls 24/7, like a human front desk.",
   },
   {
     icon: Bot,
     title: "Personal AI Assistant",
-    desc: "Your own 'Jarvis' — an executive agent that handles the busywork.",
+    desc: "Your own 'Jarvis': an executive agent that handles the busywork.",
   },
 ];
 
@@ -124,7 +124,7 @@ export default function Landing() {
           className="mx-auto mt-5 max-w-xl text-lg text-ink-500"
         >
           The free AssignX partner academy. Learn to launch sales, support, and
-          voice agents that prospect, book, and close — across any industry.
+          voice agents that prospect, book, and close across any industry.
         </motion.p>
 
         <motion.div
@@ -174,7 +174,7 @@ export default function Landing() {
         </p>
       </section>
 
-      {/* Use cases — agent types */}
+      {/* Use cases: agent types */}
       <section className="relative mx-auto max-w-6xl px-5 py-16 sm:px-8">
         <motion.div {...reveal} className="text-center">
           <p className="text-sm font-semibold uppercase tracking-wide text-brand-500">
@@ -273,7 +273,7 @@ export default function Landing() {
           style={{ backgroundImage: "linear-gradient(135deg,#7802DF,#FF0BD6)" }}
         >
           <h2 className="text-3xl text-white sm:text-4xl">
-            Start building your agent agency — free
+            Start building your agent agency, free
           </h2>
           <p className="mx-auto mt-3 max-w-lg text-white/85">
             Orientation plus 4 weeks of lessons, material, and homework. No cost,

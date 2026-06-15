@@ -1,15 +1,34 @@
-import type { User, Progress, HomeworkRecord } from "@/lib/types";
+import type {
+  User,
+  Progress,
+  HomeworkRecord,
+  Post,
+  Comment,
+  Like,
+  Follow,
+  CommunitySettings,
+  ModPermissions,
+  VideoProgress,
+} from "@/lib/types";
 import {
   SEED_USERS,
   SEED_PROGRESS,
   SEED_HOMEWORK,
   DEFAULT_USER_ID,
 } from "@/lib/mock/users";
+import {
+  SEED_POSTS,
+  SEED_COMMENTS,
+  SEED_LIKES,
+  SEED_FOLLOWS,
+  SEED_COMMUNITY_SETTINGS,
+  SEED_MODS,
+} from "@/lib/mock/board";
 
 /**
  * SSR-safe localStorage layer. This is the ONLY place that touches persistence.
  * Swapping to a real backend later means replacing this file (and the data
- * functions in lib/mock) with API calls — the UI never reads localStorage directly.
+ * functions in lib/mock) with API calls -- the UI never reads localStorage directly.
  */
 
 const KEYS = {
@@ -17,6 +36,13 @@ const KEYS = {
   progress: "assignx.progress",
   homework: "assignx.homework",
   currentUser: "assignx.currentUser",
+  posts: "assignx.posts",
+  comments: "assignx.comments",
+  likes: "assignx.likes",
+  follows: "assignx.follows",
+  communitySettings: "assignx.communitySettings",
+  mods: "assignx.mods",
+  videoProgress: "assignx.videoProgress",
 } as const;
 
 function read<T>(key: string, fallback: T): T {
@@ -68,6 +94,65 @@ export function loadCurrentUserId(): string {
 
 export function saveCurrentUserId(id: string): void {
   write(KEYS.currentUser, id);
+}
+
+// ---- Community Board helpers ----
+
+export function loadPosts(): Post[] {
+  return read<Post[]>(KEYS.posts, SEED_POSTS);
+}
+
+export function savePosts(posts: Post[]): void {
+  write(KEYS.posts, posts);
+}
+
+export function loadComments(): Comment[] {
+  return read<Comment[]>(KEYS.comments, SEED_COMMENTS);
+}
+
+export function saveComments(comments: Comment[]): void {
+  write(KEYS.comments, comments);
+}
+
+export function loadLikes(): Like[] {
+  return read<Like[]>(KEYS.likes, SEED_LIKES);
+}
+
+export function saveLikes(likes: Like[]): void {
+  write(KEYS.likes, likes);
+}
+
+export function loadFollows(): Follow[] {
+  return read<Follow[]>(KEYS.follows, SEED_FOLLOWS);
+}
+
+export function saveFollows(follows: Follow[]): void {
+  write(KEYS.follows, follows);
+}
+
+export function loadCommunitySettings(): CommunitySettings {
+  return read<CommunitySettings>(KEYS.communitySettings, SEED_COMMUNITY_SETTINGS);
+}
+
+export function saveCommunitySettings(settings: CommunitySettings): void {
+  write(KEYS.communitySettings, settings);
+}
+
+/** mods is a map of userId -> ModPermissions */
+export function loadMods(): Record<string, ModPermissions> {
+  return read<Record<string, ModPermissions>>(KEYS.mods, SEED_MODS);
+}
+
+export function saveMods(mods: Record<string, ModPermissions>): void {
+  write(KEYS.mods, mods);
+}
+
+export function loadVideoProgress(): VideoProgress[] {
+  return read<VideoProgress[]>(KEYS.videoProgress, []);
+}
+
+export function saveVideoProgress(vp: VideoProgress[]): void {
+  write(KEYS.videoProgress, vp);
 }
 
 export function resetDemo(): void {

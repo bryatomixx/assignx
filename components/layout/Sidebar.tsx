@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { GraduationCap, RotateCcw, Sparkles } from "lucide-react";
+import { GraduationCap, RotateCcw, Sparkles, Users2 } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { Avatar } from "@/components/ui/Avatar";
 import { ProgressBar } from "@/components/ui/ProgressBar";
@@ -17,7 +17,10 @@ export function Sidebar() {
 
   if (!ready || !currentUser) return <aside className="w-[264px] shrink-0" />;
 
-  const nav = [{ href: "/classroom", label: "Classroom", icon: GraduationCap }];
+  const nav = [
+    { href: "/classroom", label: "Classroom", icon: GraduationCap },
+    { href: "/community", label: "Community", icon: Users2 },
+  ];
 
   return (
     <aside className="sticky top-0 hidden h-screen w-[264px] shrink-0 flex-col border-r border-line bg-white px-4 py-5 lg:flex">

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, Users2 } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { Avatar } from "@/components/ui/Avatar";
 import { useAcademy } from "@/lib/store/AcademyProvider";
@@ -12,7 +12,10 @@ export function MobileNav() {
   const pathname = usePathname();
   const { currentUser, ready } = useAcademy();
 
-  const nav = [{ href: "/classroom", label: "Classroom", icon: GraduationCap }];
+  const nav = [
+    { href: "/classroom", label: "Classroom", icon: GraduationCap },
+    { href: "/community", label: "Community", icon: Users2 },
+  ];
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-white/85 px-4 py-3 backdrop-blur lg:hidden">

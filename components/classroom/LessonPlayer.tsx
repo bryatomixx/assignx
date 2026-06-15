@@ -14,6 +14,7 @@ import { Maximize2, Pause, Play, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { useSimulatedPlayer } from "@/lib/hooks/useSimulatedPlayer";
+import { useAcademy } from "@/lib/store/AcademyProvider";
 import type { Clip, Lesson, Module } from "@/lib/types";
 
 // Key used to signal autoplay on mount to the next lesson
@@ -366,6 +367,54 @@ export function LessonPlayer({
   const player = useSimulatedPlayer(clip.durationSec);
   const { state, elapsed, durationSec, countdownSec, togglePlay, cancelCountdown, reset } =
     player;
+
+  // ---- Video progress tracking ----
+  // Records the furthest second watched per clip. Uses a ref to avoid re-renders.
+  // recordVideoProgress already stores the maximum (never goes backward), so
+  // calling it frequently is safe -- we throttle to integer-second boundaries.
+  const { recordVideoProgress } = useAcademy();
+  const lastRecordedSecRef = useRef(-1);
+
+  // Reset the tracking ref when the clip changes (currentClipIndex changes).
+  // We rely on the fact that the player's prevClipIndexRef already guards against
+  // spurious triggers; here we just reset our own throttle counter.
+  useEffect(() => {
+    lastRecordedSecRef.current = -1;
+  }, [currentClipIndex]);
+
+  // Record on each elapsed tick, throttled to whole-second advances.
+  // Only records while actively playing (playing or countdown); also records on
+  // pause and on unmount via the cleanup function.
+  useEffect(() => {
+    const intElapsed = Math.floor(elapsed);
+    if (intElapsed > lastRecordedSecRef.current && elapsed > 0) {
+      lastRecordedSecRef.current = intElapsed;
+      recordVideoProgress(lesson.id, currentClipIndex, elapsed, clip.durationSec);
+    }
+  }, [elapsed, lesson.id, currentClipIndex, clip.durationSec, recordVideoProgress]);
+
+  // Also flush on pause and on unmount to capture the last position.
+  useEffect(() => {
+    const isPaused = state === "paused";
+    if (isPaused && elapsed > 0) {
+      recordVideoProgress(lesson.id, currentClipIndex, elapsed, clip.durationSec);
+    }
+  }, [state, elapsed, lesson.id, currentClipIndex, clip.durationSec, recordVideoProgress]);
+
+  // Flush on unmount (component destroyed = lesson navigation or page leave).
+  // Keep a ref with the latest values, updated in an effect (never written during
+  // render) so the unmount cleanup can read the final position.
+  const flushRef = useRef({ lesson, currentClipIndex, clip, elapsed, recordVideoProgress });
+  useEffect(() => {
+    flushRef.current = { lesson, currentClipIndex, clip, elapsed, recordVideoProgress };
+  });
+  useEffect(() => {
+    return () => {
+      const { lesson: l, currentClipIndex: ci, clip: c, elapsed: e, recordVideoProgress: rec } =
+        flushRef.current;
+      if (e > 0) rec(l.id, ci, e, c.durationSec);
+    };
+  }, []);
 
   const pct = Math.min((elapsed / durationSec) * 100, 100);
   const isPlaying = state === "playing" || state === "countdown";

@@ -1,0 +1,137 @@
+import type {
+  Post,
+  Comment,
+  Like,
+  Follow,
+  CommunitySettings,
+  ModPermissions,
+} from "@/lib/types";
+
+// NOTE: All seed dates are ISO literals, no Date.now() or new Date() calls.
+
+export const SEED_COMMUNITY_SETTINGS: CommunitySettings = {
+  globalApproval: true,
+  autoApproveUserIds: ["u-michelle"], // Michelle is trusted; her posts skip the queue
+};
+
+// Jon is a Mod with limited permissions (cannot delete posts or manage approval settings)
+export const SEED_MODS: Record<string, ModPermissions> = {
+  "u-jon": {
+    canApprovePosts: true,
+    canDeletePosts: false,
+    canDeleteComments: true,
+    canPinContent: true,
+    canManageApproval: false,
+  },
+};
+
+export const SEED_POSTS: Post[] = [
+  {
+    id: "post-1",
+    authorId: "u-admin",
+    body: "Welcome to the AssignX Community Board! Share wins, ask questions, and support each other on the 30-day journey.",
+    mediaType: "link",
+    mediaPayload: "https://www.assignx.ai",
+    status: "approved",
+    pinned: true,
+    createdAt: "2026-05-01T09:00:00.000Z",
+  },
+  {
+    id: "post-2",
+    authorId: "u-michelle",
+    body: "Just finished Week 1: the whitelabel setup was smoother than I expected. Loving the platform so far!",
+    mediaType: "text",
+    mediaPayload: null,
+    status: "approved",
+    pinned: false,
+    createdAt: "2026-05-10T14:22:00.000Z",
+  },
+  {
+    id: "post-3",
+    authorId: "u-jon",
+    body: "Had my first agency prospecting call today using the AI agent. It booked two appointments on its own. Screenshot below.",
+    mediaType: "image",
+    mediaPayload: null, // image upload via Supabase Storage coming later
+    status: "approved",
+    pinned: false,
+    createdAt: "2026-05-15T10:45:00.000Z",
+  },
+  {
+    id: "post-4",
+    authorId: "u-test",
+    body: "Does anyone have experience connecting Twilio to a GHL sub-account? My A2P approval is taking forever.",
+    mediaType: "text",
+    mediaPayload: null,
+    status: "approved",
+    pinned: false,
+    createdAt: "2026-05-20T08:30:00.000Z",
+  },
+  {
+    id: "post-5",
+    authorId: "u-stevie",
+    body: "Hey everyone! Just joined. Excited to start the challenge. Any tips for someone just getting into the agency space?",
+    mediaType: "text",
+    mediaPayload: null,
+    status: "pending", // pending, keeps the moderation queue non-empty for demo
+    pinned: false,
+    createdAt: "2026-06-01T17:05:00.000Z",
+  },
+];
+
+export const SEED_COMMENTS: Comment[] = [
+  {
+    id: "comment-1",
+    postId: "post-2",
+    authorId: "u-admin",
+    body: "Great to hear, Michelle! Keep that momentum going into Week 2.",
+    pinned: true, // pinned so the admin response is always visible
+    createdAt: "2026-05-10T15:00:00.000Z",
+  },
+  {
+    id: "comment-2",
+    postId: "post-2",
+    authorId: "u-jon",
+    body: "Same experience here. The domain config tutorial in the resource hub was a lifesaver.",
+    pinned: false,
+    createdAt: "2026-05-10T16:10:00.000Z",
+  },
+  {
+    id: "comment-3",
+    postId: "post-3",
+    authorId: "u-michelle",
+    body: "This is amazing, Jon! Which niche are you targeting?",
+    pinned: false,
+    createdAt: "2026-05-15T11:30:00.000Z",
+  },
+  {
+    id: "comment-4",
+    postId: "post-4",
+    authorId: "u-jon",
+    body: "A2P took about 5 business days for me. Make sure your Trust Hub business profile is 100% complete before submitting.",
+    pinned: false,
+    createdAt: "2026-05-20T09:45:00.000Z",
+  },
+];
+
+export const SEED_LIKES: Like[] = [
+  { userId: "u-test", postId: "post-1" },
+  { userId: "u-jon", postId: "post-1" },
+  { userId: "u-michelle", postId: "post-1" },
+  { userId: "u-stevie", postId: "post-1" },
+  { userId: "u-admin", postId: "post-2" },
+  { userId: "u-jon", postId: "post-2" },
+  { userId: "u-test", postId: "post-2" },
+  { userId: "u-michelle", postId: "post-3" },
+  { userId: "u-admin", postId: "post-3" },
+  { userId: "u-test", postId: "post-4" },
+];
+
+export const SEED_FOLLOWS: Follow[] = [
+  { followerId: "u-test", followeeId: "u-admin" },
+  { followerId: "u-test", followeeId: "u-michelle" },
+  { followerId: "u-jon", followeeId: "u-admin" },
+  { followerId: "u-jon", followeeId: "u-michelle" },
+  { followerId: "u-michelle", followeeId: "u-admin" },
+  { followerId: "u-stevie", followeeId: "u-admin" },
+  { followerId: "u-stevie", followeeId: "u-michelle" },
+];
