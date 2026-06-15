@@ -1,5 +1,6 @@
 "use client";
 
+import { forwardRef } from "react";
 import { motion, type HTMLMotionProps } from "framer-motion";
 import { cn } from "@/lib/utils";
 
@@ -24,15 +25,13 @@ interface ButtonProps extends HTMLMotionProps<"button"> {
   size?: Size;
 }
 
-export function Button({
-  variant = "primary",
-  size = "md",
-  className,
-  children,
-  ...props
-}: ButtonProps) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { variant = "primary", size = "md", className, children, ...props },
+  ref,
+) {
   return (
     <motion.button
+      ref={ref}
       whileHover={{ y: -1 }}
       whileTap={{ scale: 0.97 }}
       className={cn(
@@ -46,4 +45,4 @@ export function Button({
       {children}
     </motion.button>
   );
-}
+});

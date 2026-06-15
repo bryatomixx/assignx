@@ -71,6 +71,13 @@ export interface HomeworkRecord {
   doneLessonIds: string[];
 }
 
+/** A single video clip inside a lesson playlist. */
+export interface Clip {
+  id: string;
+  title: string;
+  durationSec: number;
+}
+
 /** Derived helpers used across the UI. */
 export interface ModuleProgress {
   moduleId: string;

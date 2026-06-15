@@ -1,6 +1,6 @@
 import { Rocket, TrendingUp, Mic, Building2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { Module, Lesson, Bullet } from "@/lib/types";
+import type { Module, Lesson, Bullet, Clip, LessonSection } from "@/lib/types";
 
 /** Tiny helper to build bullet trees readably. */
 const b = (text: string, children?: Bullet[], href?: string): Bullet => ({
@@ -607,6 +607,33 @@ export function getLesson(
 }
 
 export const TOTAL_LESSONS = MODULES.reduce((n, m) => n + m.lessons.length, 0);
+
+/**
+ * Returns the first LessonSection that is NOT a homework section.
+ * Typically the "What you'll cover" block.
+ */
+export function getCoverSection(lesson: Lesson): LessonSection | undefined {
+  return lesson.sections?.find((s) => !/homework/i.test(s.heading));
+}
+
+/**
+ * Derives the playlist of clips for a lesson from the top-level bullets
+ * of its cover section. Duration varies slightly per index so demo clips
+ * feel distinct (10-14s range, always >= 8s so the 5s countdown is visible).
+ * Falls back to a single 20s clip when there is no cover section.
+ */
+export function getLessonClips(lesson: Lesson): Clip[] {
+  const cover = getCoverSection(lesson);
+  if (!cover || cover.bullets.length === 0) {
+    return [{ id: `${lesson.id}-c0`, title: lesson.title, durationSec: 20 }];
+  }
+  return cover.bullets.map((bullet, i) => ({
+    id: `${lesson.id}-c${i}`,
+    title: bullet.text,
+    // Stagger duration: 10, 12, 11, 13, 10, 12, ... (never < 8)
+    durationSec: 10 + ((i * 2) % 5),
+  }));
+}
 
 /** Whether a lesson includes a Homework section. */
 export function hasHomework(lesson: Lesson): boolean {

@@ -37,6 +37,7 @@ interface AcademyContextValue {
   // progress
   isComplete: (lessonId: string) => boolean;
   toggleComplete: (lessonId: string) => void;
+  markComplete: (lessonId: string) => void;
   completedFor: (userId: string) => string[];
   moduleProgress: (moduleId: string, userId?: string) => ModuleProgress;
   overallPct: (userId?: string) => number;
@@ -134,6 +135,21 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
           ? cur.filter((id) => id !== lessonId)
           : [...cur, lessonId];
         const updated = { ...prev, [currentUserId]: next };
+        persistProgress(updated);
+        return updated;
+      });
+    },
+    [currentUserId, persistProgress],
+  );
+
+  // Idempotent: ensure a lesson is in the completed list (used by auto-complete
+  // when all of a lesson's clips have been watched). Never un-completes.
+  const markComplete = useCallback(
+    (lessonId: string) => {
+      setProgressMap((prev) => {
+        const cur = prev[currentUserId] ?? [];
+        if (cur.includes(lessonId)) return prev; // already complete -> no change
+        const updated = { ...prev, [currentUserId]: [...cur, lessonId] };
         persistProgress(updated);
         return updated;
       });
@@ -298,6 +314,7 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
       loginWithCode,
       isComplete,
       toggleComplete,
+      markComplete,
       completedFor,
       moduleProgress,
       overallPct,
@@ -322,6 +339,7 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
       loginWithCode,
       isComplete,
       toggleComplete,
+      markComplete,
       completedFor,
       moduleProgress,
       overallPct,
