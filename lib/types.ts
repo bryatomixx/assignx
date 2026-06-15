@@ -100,6 +100,10 @@ export interface Post {
   status: PostStatus;
   pinned: boolean;
   createdAt: string; // ISO
+  approvedBy: string | null;
+  approvedAt: string | null;
+  rejectedBy: string | null;
+  rejectedAt: string | null;
 }
 
 export interface Comment {
@@ -143,4 +147,24 @@ export interface VideoProgress {
   clipIndex: number;
   elapsedSec: number;
   durationSec: number;
+}
+
+// ---- Notification types ----
+
+export type NotificationType =
+  | "like"
+  | "comment"
+  | "follow"
+  | "post_approved"
+  | "post_rejected"
+  | "post_pending";
+
+export interface AppNotification {
+  id: string;
+  recipientId: string; // who sees it
+  actorId: string; // who triggered it
+  type: NotificationType;
+  postId: string | null; // related post if any
+  createdAt: string; // ISO
+  read: boolean;
 }

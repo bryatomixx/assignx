@@ -9,6 +9,7 @@ import type {
   CommunitySettings,
   ModPermissions,
   VideoProgress,
+  AppNotification,
 } from "@/lib/types";
 import {
   SEED_USERS,
@@ -23,6 +24,7 @@ import {
   SEED_FOLLOWS,
   SEED_COMMUNITY_SETTINGS,
   SEED_MODS,
+  SEED_NOTIFICATIONS,
 } from "@/lib/mock/board";
 
 /**
@@ -43,6 +45,7 @@ const KEYS = {
   communitySettings: "assignx.communitySettings",
   mods: "assignx.mods",
   videoProgress: "assignx.videoProgress",
+  notifications: "assignx.notifications",
 } as const;
 
 function read<T>(key: string, fallback: T): T {
@@ -153,6 +156,16 @@ export function loadVideoProgress(): VideoProgress[] {
 
 export function saveVideoProgress(vp: VideoProgress[]): void {
   write(KEYS.videoProgress, vp);
+}
+
+// ---- Notification helpers ----
+
+export function loadNotifications(): AppNotification[] {
+  return read<AppNotification[]>(KEYS.notifications, SEED_NOTIFICATIONS);
+}
+
+export function saveNotifications(notifications: AppNotification[]): void {
+  write(KEYS.notifications, notifications);
 }
 
 export function resetDemo(): void {

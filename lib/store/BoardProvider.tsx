@@ -18,6 +18,8 @@ import type {
   CommunitySettings,
   ModPermissions,
   CommunityRole,
+  AppNotification,
+  NotificationType,
 } from "@/lib/types";
 import {
   loadPosts,
@@ -32,6 +34,8 @@ import {
   saveCommunitySettings,
   loadMods,
   saveMods,
+  loadNotifications,
+  saveNotifications,
 } from "@/lib/store/storage";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 
@@ -49,6 +53,8 @@ interface BoardContextValue {
   // Feed
   feed: (tab: "all" | "following") => Post[];
   pendingPosts: () => Post[];
+  approvedPosts: () => Post[];
+  rejectedPosts: () => Post[];
   myPendingPosts: () => Post[];
   myRejectedPosts: () => Post[];
   commentsFor: (postId: string) => Comment[];
@@ -119,6 +125,12 @@ interface BoardContextValue {
   commentedPostIdsBy: (userId: string) => string[];
   likedPostsBy: (userId: string) => Post[];
 
+  // Notifications
+  notificationsFor: (userId?: string) => AppNotification[];
+  unreadCount: (userId?: string) => number;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: (userId?: string) => void;
+
   // Cascade delete (purge all board data for a user)
   purgeUser: (userId: string) => void;
 }
@@ -155,6 +167,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     autoApproveUserIds: [],
   });
   const [mods, setModsState] = useState<Record<string, ModPermissions>>({});
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [ready, setReady] = useState(false);
 
   // Hydrate from localStorage on mount (client only). setState here is the
@@ -167,6 +180,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     setFollows(loadFollows());
     setSettingsState(loadCommunitySettings());
     setModsState(loadMods());
+    setNotifications(loadNotifications());
     setReady(true);
   }, []);
 
@@ -264,6 +278,34 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     [comments, currentUserId, canDeleteComments],
   );
 
+  // ---- Notification helper (internal) ----
+
+  // Creates a notification and persists it. Never notifies when recipient === actor.
+  const pushNotification = useCallback(
+    (
+      recipientId: string,
+      actorId: string,
+      type: NotificationType,
+      postId: string | null,
+      existingNotifs: AppNotification[],
+    ): AppNotification[] => {
+      if (recipientId === actorId) return existingNotifs;
+      const notif: AppNotification = {
+        id: genId("notif"),
+        recipientId,
+        actorId,
+        type,
+        postId,
+        createdAt: new Date().toISOString(),
+        read: false,
+      };
+      const next = [notif, ...existingNotifs];
+      saveNotifications(next);
+      return next;
+    },
+    [],
+  );
+
   // ---- Feed ----
 
   const feed = useCallback(
@@ -282,6 +324,26 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
   const pendingPosts = useCallback(
     (): Post[] => posts.filter((p) => p.status === "pending"),
+    [posts],
+  );
+
+  const approvedPosts = useCallback(
+    (): Post[] =>
+      [...posts.filter((p) => p.status === "approved")].sort((a, b) => {
+        const aTime = a.approvedAt ?? a.createdAt;
+        const bTime = b.approvedAt ?? b.createdAt;
+        return bTime.localeCompare(aTime);
+      }),
+    [posts],
+  );
+
+  const rejectedPosts = useCallback(
+    (): Post[] =>
+      [...posts.filter((p) => p.status === "rejected")].sort((a, b) => {
+        const aTime = a.rejectedAt ?? a.createdAt;
+        const bTime = b.rejectedAt ?? b.createdAt;
+        return bTime.localeCompare(aTime);
+      }),
     [posts],
   );
 
@@ -336,7 +398,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       if (role === "admin" || role === "mod") return "approved";
       // Users in the auto-approve list bypass moderation
       if (settings.autoApproveUserIds.includes(authorId)) return "approved";
-      // When globalApproval is false (open board) -- every post is auto-approved
+      // When globalApproval is false (open board) every post is auto-approved
       if (!settings.globalApproval) return "approved";
       // Otherwise posts require moderation
       return "pending";
@@ -366,44 +428,112 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         status,
         pinned: false,
         createdAt: new Date().toISOString(),
+        approvedBy: status === "approved" ? currentUserId : null,
+        approvedAt: status === "approved" ? new Date().toISOString() : null,
+        rejectedBy: null,
+        rejectedAt: null,
       };
       setPosts((prev) => {
         const next = [post, ...prev];
         savePosts(next);
         return next;
       });
+      // Notify all users who can approve when the post is pending
+      if (status === "pending") {
+        setNotifications((prev) => {
+          let next = [...prev];
+          const approvers = academy.users.filter(
+            (u) => canApprovePosts(u.id) && u.id !== currentUserId,
+          );
+          for (const approver of approvers) {
+            // pushNotification persists on each call; final iteration leaves
+            // the complete list on disk.
+            next = pushNotification(
+              approver.id,
+              currentUserId,
+              "post_pending",
+              post.id,
+              next,
+            );
+          }
+          return next;
+        });
+      }
       return post;
     },
-    [currentUserId, academy, resolveInitialStatus],
-  );
-
-  const updatePostStatus = useCallback(
-    (postId: string, status: PostStatus) => {
-      setPosts((prev) => {
-        const next = prev.map((p) =>
-          p.id === postId ? { ...p, status } : p,
-        );
-        savePosts(next);
-        return next;
-      });
-    },
-    [],
+    [currentUserId, academy, resolveInitialStatus, canApprovePosts, pushNotification],
   );
 
   const approvePost = useCallback(
     (postId: string) => {
       if (!canApprovePosts()) return;
-      updatePostStatus(postId, "approved");
+      const post = posts.find((p) => p.id === postId);
+      if (!post) return;
+      const now = new Date().toISOString();
+      setPosts((prev) => {
+        const next = prev.map((p) =>
+          p.id === postId
+            ? {
+                ...p,
+                status: "approved" as PostStatus,
+                approvedBy: currentUserId,
+                approvedAt: now,
+                rejectedBy: null,
+                rejectedAt: null,
+              }
+            : p,
+        );
+        savePosts(next);
+        return next;
+      });
+      // Notify the post author
+      setNotifications((prev) =>
+        pushNotification(
+          post.authorId,
+          currentUserId,
+          "post_approved",
+          postId,
+          prev,
+        ),
+      );
     },
-    [canApprovePosts, updatePostStatus],
+    [canApprovePosts, posts, currentUserId, pushNotification],
   );
 
   const rejectPost = useCallback(
     (postId: string) => {
       if (!canApprovePosts()) return;
-      updatePostStatus(postId, "rejected");
+      const post = posts.find((p) => p.id === postId);
+      if (!post) return;
+      const now = new Date().toISOString();
+      setPosts((prev) => {
+        const next = prev.map((p) =>
+          p.id === postId
+            ? {
+                ...p,
+                status: "rejected" as PostStatus,
+                rejectedBy: currentUserId,
+                rejectedAt: now,
+                approvedBy: null,
+                approvedAt: null,
+              }
+            : p,
+        );
+        savePosts(next);
+        return next;
+      });
+      // Notify the post author
+      setNotifications((prev) =>
+        pushNotification(
+          post.authorId,
+          currentUserId,
+          "post_rejected",
+          postId,
+          prev,
+        ),
+      );
     },
-    [canApprovePosts, updatePostStatus],
+    [canApprovePosts, posts, currentUserId, pushNotification],
   );
 
   const deletePost = useCallback(
@@ -464,13 +594,34 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       if (!currentUserId) return;
       if (academy.isPaused(currentUserId)) return;
       if (isLiked(postId)) return;
+      const post = posts.find((p) => p.id === postId);
       setLikes((prev) => {
         const next = [...prev, { userId: currentUserId, postId }];
         saveLikes(next);
         return next;
       });
+      // Notify post author; dedupe: skip if an unread 'like' from this actor already exists for this post
+      if (post) {
+        setNotifications((prev) => {
+          const alreadyNotified = prev.some(
+            (n) =>
+              n.type === "like" &&
+              n.actorId === currentUserId &&
+              n.postId === postId &&
+              !n.read,
+          );
+          if (alreadyNotified) return prev;
+          return pushNotification(
+            post.authorId,
+            currentUserId,
+            "like",
+            postId,
+            prev,
+          );
+        });
+      }
     },
-    [currentUserId, academy, isLiked],
+    [currentUserId, academy, isLiked, posts, pushNotification],
   );
 
   const unlikePost = useCallback(
@@ -510,9 +661,19 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         saveComments(next);
         return next;
       });
+      // Notify post author
+      setNotifications((prev) => {
+        return pushNotification(
+          targetPost.authorId,
+          currentUserId,
+          "comment",
+          postId,
+          prev,
+        );
+      });
       return comment;
     },
-    [currentUserId, academy, posts],
+    [currentUserId, academy, posts, pushNotification],
   );
 
   const deleteComment = useCallback(
@@ -575,8 +736,12 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         saveFollows(next);
         return next;
       });
+      // Notify the user being followed
+      setNotifications((prev) => {
+        return pushNotification(userId, currentUserId, "follow", null, prev);
+      });
     },
-    [currentUserId, isFollowing],
+    [currentUserId, isFollowing, pushNotification],
   );
 
   const unfollow = useCallback(
@@ -747,6 +912,51 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     [likes, posts],
   );
 
+  // ---- Notification getters ----
+
+  const notificationsFor = useCallback(
+    (userId?: string): AppNotification[] => {
+      const uid = userId ?? currentUserId;
+      return [...notifications.filter((n) => n.recipientId === uid)].sort(
+        (a, b) => b.createdAt.localeCompare(a.createdAt),
+      );
+    },
+    [notifications, currentUserId],
+  );
+
+  const unreadCount = useCallback(
+    (userId?: string): number => {
+      const uid = userId ?? currentUserId;
+      return notifications.filter((n) => n.recipientId === uid && !n.read).length;
+    },
+    [notifications, currentUserId],
+  );
+
+  const markNotificationRead = useCallback(
+    (id: string) => {
+      setNotifications((prev) => {
+        const next = prev.map((n) => (n.id === id ? { ...n, read: true } : n));
+        saveNotifications(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const markAllNotificationsRead = useCallback(
+    (userId?: string) => {
+      const uid = userId ?? currentUserId;
+      setNotifications((prev) => {
+        const next = prev.map((n) =>
+          n.recipientId === uid ? { ...n, read: true } : n,
+        );
+        saveNotifications(next);
+        return next;
+      });
+    },
+    [currentUserId],
+  );
+
   // ---- Cascade purge ----
 
   const purgeUser = useCallback(
@@ -800,6 +1010,13 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         saveCommunitySettings(next);
         return next;
       });
+      setNotifications((prev) => {
+        const next = prev.filter(
+          (n) => n.recipientId !== userId && n.actorId !== userId,
+        );
+        saveNotifications(next);
+        return next;
+      });
     },
     [posts],
   );
@@ -811,6 +1028,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       ready,
       feed,
       pendingPosts,
+      approvedPosts,
+      rejectedPosts,
       myPendingPosts,
       myRejectedPosts,
       commentsFor,
@@ -856,12 +1075,18 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       likesGivenBy,
       commentedPostIdsBy,
       likedPostsBy,
+      notificationsFor,
+      unreadCount,
+      markNotificationRead,
+      markAllNotificationsRead,
       purgeUser,
     }),
     [
       ready,
       feed,
       pendingPosts,
+      approvedPosts,
+      rejectedPosts,
       myPendingPosts,
       myRejectedPosts,
       commentsFor,
@@ -907,6 +1132,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       likesGivenBy,
       commentedPostIdsBy,
       likedPostsBy,
+      notificationsFor,
+      unreadCount,
+      markNotificationRead,
+      markAllNotificationsRead,
       purgeUser,
     ],
   );

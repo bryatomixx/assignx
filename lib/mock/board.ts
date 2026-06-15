@@ -5,6 +5,7 @@ import type {
   Follow,
   CommunitySettings,
   ModPermissions,
+  AppNotification,
 } from "@/lib/types";
 
 // NOTE: All seed dates are ISO literals, no Date.now() or new Date() calls.
@@ -35,6 +36,11 @@ export const SEED_POSTS: Post[] = [
     status: "approved",
     pinned: true,
     createdAt: "2026-05-01T09:00:00.000Z",
+    // Admin's own welcome post; approvedBy self is reasonable but null is also valid
+    approvedBy: "u-admin",
+    approvedAt: "2026-05-01T09:00:00.000Z",
+    rejectedBy: null,
+    rejectedAt: null,
   },
   {
     id: "post-2",
@@ -45,6 +51,11 @@ export const SEED_POSTS: Post[] = [
     status: "approved",
     pinned: false,
     createdAt: "2026-05-10T14:22:00.000Z",
+    // Michelle is in autoApproveUserIds; admin retroactively credited as approver
+    approvedBy: "u-admin",
+    approvedAt: "2026-05-10T14:22:00.000Z",
+    rejectedBy: null,
+    rejectedAt: null,
   },
   {
     id: "post-3",
@@ -55,6 +66,11 @@ export const SEED_POSTS: Post[] = [
     status: "approved",
     pinned: false,
     createdAt: "2026-05-15T10:45:00.000Z",
+    // Jon is a Mod; auto-approved; admin credited
+    approvedBy: "u-admin",
+    approvedAt: "2026-05-15T10:45:00.000Z",
+    rejectedBy: null,
+    rejectedAt: null,
   },
   {
     id: "post-4",
@@ -65,6 +81,10 @@ export const SEED_POSTS: Post[] = [
     status: "approved",
     pinned: false,
     createdAt: "2026-05-20T08:30:00.000Z",
+    approvedBy: "u-admin",
+    approvedAt: "2026-05-20T08:35:00.000Z",
+    rejectedBy: null,
+    rejectedAt: null,
   },
   {
     id: "post-5",
@@ -75,6 +95,10 @@ export const SEED_POSTS: Post[] = [
     status: "pending", // pending, keeps the moderation queue non-empty for demo
     pinned: false,
     createdAt: "2026-06-01T17:05:00.000Z",
+    approvedBy: null,
+    approvedAt: null,
+    rejectedBy: null,
+    rejectedAt: null,
   },
 ];
 
@@ -134,4 +158,36 @@ export const SEED_FOLLOWS: Follow[] = [
   { followerId: "u-michelle", followeeId: "u-admin" },
   { followerId: "u-stevie", followeeId: "u-admin" },
   { followerId: "u-stevie", followeeId: "u-michelle" },
+];
+
+// Demo notifications for u-test so the bell badge shows something on first load.
+// Seeds use ISO literals; never call new Date() here.
+export const SEED_NOTIFICATIONS: AppNotification[] = [
+  {
+    id: "notif-1",
+    recipientId: "u-test",
+    actorId: "u-michelle",
+    type: "like",
+    postId: "post-4", // Michelle liked u-test's Twilio post
+    createdAt: "2026-05-21T10:00:00.000Z",
+    read: false,
+  },
+  {
+    id: "notif-2",
+    recipientId: "u-test",
+    actorId: "u-jon",
+    type: "comment",
+    postId: "post-4", // Jon commented on u-test's Twilio post
+    createdAt: "2026-05-20T09:45:00.000Z",
+    read: false,
+  },
+  {
+    id: "notif-3",
+    recipientId: "u-test",
+    actorId: "u-stevie",
+    type: "follow",
+    postId: null, // Stevie followed u-test
+    createdAt: "2026-06-01T18:00:00.000Z",
+    read: false,
+  },
 ];
