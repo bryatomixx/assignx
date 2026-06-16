@@ -10,7 +10,7 @@ import {
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Maximize2, Pause, Play, X } from "lucide-react";
+import { Maximize2, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { useSimulatedPlayer } from "@/lib/hooks/useSimulatedPlayer";
@@ -20,6 +20,245 @@ import type { Clip, Lesson, Module } from "@/lib/types";
 
 // Key used to signal autoplay on mount to the next lesson
 const AUTOPLAY_KEY = "assignx:autoplay";
+
+// ---- Helpers ----
+function formatTime(sec: number): string {
+  const s = Math.floor(sec);
+  const m = Math.floor(s / 60);
+  const ss = s % 60;
+  return `${m}:${ss.toString().padStart(2, "0")}`;
+}
+
+// ---- Seekable progress bar ----
+// Renders an interactive track + thumb. Accepts click and pointer-drag.
+// Accessible via role=slider + arrow keys (+/- 5s).
+function SeekBar({
+  elapsed,
+  durationSec,
+  pct,
+  onSeek,
+  compact = false,
+}: {
+  elapsed: number;
+  durationSec: number;
+  pct: number;
+  onSeek: (seconds: number) => void;
+  compact?: boolean;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [localPct, setLocalPct] = useState<number | null>(null);
+
+  const clampedPct = localPct !== null ? localPct : Math.min(pct, 100);
+
+  const pctFromPointer = useCallback((clientX: number): number => {
+    const el = trackRef.current;
+    if (!el) return 0;
+    const rect = el.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  }, []);
+
+  const commitSeek = useCallback((frac: number) => {
+    const dur = durationSec || 1;
+    onSeek(frac * dur);
+    setLocalPct(null);
+  }, [durationSec, onSeek]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const frac = pctFromPointer(e.clientX);
+    setLocalPct(frac * 100);
+    setDragging(true);
+  }, [pctFromPointer]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging) return;
+    const frac = pctFromPointer(e.clientX);
+    setLocalPct(frac * 100);
+  }, [dragging, pctFromPointer]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (!dragging) return;
+    const frac = pctFromPointer(e.clientX);
+    setDragging(false);
+    commitSeek(frac);
+  }, [dragging, pctFromPointer, commitSeek]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const dur = durationSec || 1;
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+      e.preventDefault();
+      onSeek(Math.min(elapsed + 5, dur));
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+      e.preventDefault();
+      onSeek(Math.max(elapsed - 5, 0));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      onSeek(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      onSeek(dur);
+    }
+  }, [elapsed, durationSec, onSeek]);
+
+  const showThumb = hovered || dragging;
+
+  return (
+    <div className={cn("flex items-center gap-2 w-full", compact ? "px-2" : "px-4")}>
+      {!compact && (
+        <span className="text-[10px] font-mono text-white/70 shrink-0 tabular-nums min-w-[28px]">
+          {formatTime(elapsed)}
+        </span>
+      )}
+      {/* Hit area: tall enough for comfortable interaction */}
+      <div
+        ref={trackRef}
+        role="slider"
+        aria-label="Video progress"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(durationSec) || 100}
+        aria-valuenow={Math.round(elapsed)}
+        aria-valuetext={`${formatTime(elapsed)} of ${formatTime(durationSec)}`}
+        tabIndex={0}
+        className={cn(
+          "relative flex-1 flex items-center cursor-pointer select-none",
+          "rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-white",
+          compact ? "h-3" : "h-4",
+        )}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => { if (!dragging) setHovered(false); }}
+        onKeyDown={handleKeyDown}
+      >
+        {/* Track */}
+        <div className={cn("absolute inset-x-0 rounded-full bg-white/20", compact ? "h-1" : "h-1.5")} style={{ top: "50%", transform: "translateY(-50%)" }}>
+          {/* Filled portion */}
+          <div
+            className="absolute left-0 top-0 h-full rounded-full"
+            style={{
+              width: `${clampedPct}%`,
+              background: "linear-gradient(90deg, #7802df, #ff0bd6)",
+            }}
+          />
+        </div>
+        {/* Thumb: always in DOM but opacity-animated for smooth appearance */}
+        <div
+          aria-hidden="true"
+          className={cn(
+            "absolute rounded-full bg-white shadow-md transition-opacity duration-150",
+            compact ? "h-3 w-3" : "h-4 w-4",
+            showThumb ? "opacity-100" : "opacity-0",
+          )}
+          style={{
+            left: `clamp(0px, calc(${clampedPct}% - ${compact ? "6px" : "8px"}), calc(100% - ${compact ? "12px" : "16px"}))`,
+            top: "50%",
+            transform: "translateY(-50%)",
+          }}
+        />
+      </div>
+      {!compact && (
+        <span className="text-[10px] font-mono text-white/70 shrink-0 tabular-nums min-w-[28px] text-right">
+          {formatTime(durationSec)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ---- Volume control ----
+// Shows a mute toggle + horizontal slider. Only rendered for YouTube clips.
+function VolumeControl({
+  volume,
+  muted,
+  onSetVolume,
+  onToggleMute,
+  compact = false,
+}: {
+  volume: number;
+  muted: boolean;
+  onSetVolume: (v: number) => void;
+  onToggleMute: () => void;
+  compact?: boolean;
+}) {
+  const [showSlider, setShowSlider] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Hide slider when clicking outside
+  useEffect(() => {
+    if (!showSlider) return;
+    const handler = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) {
+        setShowSlider(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showSlider]);
+
+  return (
+    <div
+      ref={containerRef}
+      className={cn("relative flex items-center gap-1", compact ? "gap-0.5" : "gap-1")}
+    >
+      <button
+        onClick={() => {
+          onToggleMute();
+          setShowSlider((v) => !v);
+        }}
+        aria-label={muted ? "Unmute" : "Mute"}
+        className={cn(
+          "flex items-center justify-center rounded-full text-white hover:bg-white/20 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white",
+          compact ? "h-7 w-7" : "h-8 w-8",
+        )}
+      >
+        {muted || volume === 0 ? (
+          <VolumeX className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+        ) : (
+          <Volume2 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+        )}
+      </button>
+
+      <AnimatePresence>
+        {showSlider && (
+          <motion.div
+            initial={{ opacity: 0, width: 0 }}
+            animate={{ opacity: 1, width: compact ? 64 : 80 }}
+            exit={{ opacity: 0, width: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden"
+          >
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={muted ? 0 : volume}
+              aria-label="Volume"
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                onSetVolume(val);
+                if (val > 0 && muted) onToggleMute(); // unmute when dragging up
+              }}
+              className={cn(
+                "w-full cursor-pointer appearance-none rounded-full bg-white/20",
+                "h-1.5",
+                // Thumb styling via Tailwind arbitrary
+                "[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5",
+                "[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer",
+                "[&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:rounded-full",
+                "[&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer",
+              )}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 /**
  * LessonPlayer is a CONTROLLED component.
@@ -178,7 +417,10 @@ function MiniPlayer({
   clipTitle,
   accent,
   pct,
+  elapsed,
+  durationSec,
   isPlaying,
+  isYouTube,
   countdownActive,
   countdownSec,
   countdownTotal,
@@ -189,13 +431,21 @@ function MiniPlayer({
   onReturn,
   onPlayNow,
   onCancelCountdown,
+  onSeek,
+  volume,
+  muted,
+  onSetVolume,
+  onToggleMute,
   posterUrl,
   reduced,
 }: {
   clipTitle: string;
   accent: string;
   pct: number;
+  elapsed: number;
+  durationSec: number;
   isPlaying: boolean;
+  isYouTube: boolean;
   countdownActive: boolean;
   countdownSec: number;
   countdownTotal: number;
@@ -206,6 +456,11 @@ function MiniPlayer({
   onReturn: () => void;
   onPlayNow: () => void;
   onCancelCountdown: () => void;
+  onSeek: (seconds: number) => void;
+  volume: number;
+  muted: boolean;
+  onSetVolume: (v: number) => void;
+  onToggleMute: () => void;
   posterUrl?: string;
   reduced: boolean;
 }) {
@@ -295,12 +550,26 @@ function MiniPlayer({
           )}
         </div>
 
-        <div className="absolute inset-x-0 bottom-0 h-1 bg-white/20">
-          <motion.div
-            className="h-full bg-white/80"
-            animate={{ width: `${pct}%` }}
-            transition={{ duration: 0.2, ease: "linear" }}
+        {/* Seek bar + volume row at the bottom of the mini-player */}
+        <div className="absolute inset-x-0 bottom-0 pb-1.5 pt-0.5 flex items-center gap-1">
+          <SeekBar
+            elapsed={elapsed}
+            durationSec={durationSec}
+            pct={pct}
+            onSeek={onSeek}
+            compact
           />
+          {isYouTube && (
+            <div className="shrink-0 pr-1">
+              <VolumeControl
+                volume={volume}
+                muted={muted}
+                onSetVolume={onSetVolume}
+                onToggleMute={onToggleMute}
+                compact
+              />
+            </div>
+          )}
         </div>
       </div>
     </motion.div>
@@ -325,6 +594,8 @@ function PlayerUI({
   isPlaying,
   countdownActive,
   pct,
+  elapsed,
+  durationSec,
   countdownTotal,
   showModuleEnd,
   showLessonCancelledEnd,
@@ -338,6 +609,11 @@ function PlayerUI({
   onCancel,
   onMiniClose,
   onMiniReturn,
+  onSeek,
+  volume,
+  muted,
+  onSetVolume,
+  onToggleMute,
   // intersection ref
   inlinePlayerRef,
 }: {
@@ -354,6 +630,8 @@ function PlayerUI({
   isPlaying: boolean;
   countdownActive: boolean;
   pct: number;
+  elapsed: number;
+  durationSec: number;
   countdownTotal: number;
   showModuleEnd: boolean;
   showLessonCancelledEnd: boolean;
@@ -366,6 +644,11 @@ function PlayerUI({
   onCancel: () => void;
   onMiniClose: () => void;
   onMiniReturn: () => void;
+  onSeek: (seconds: number) => void;
+  volume: number;
+  muted: boolean;
+  onSetVolume: (v: number) => void;
+  onToggleMute: () => void;
   inlinePlayerRef: React.RefObject<HTMLDivElement | null>;
 }) {
   return (
@@ -422,12 +705,23 @@ function PlayerUI({
           </button>
         )}
 
-        {/* Progress bar */}
-        <div className="absolute bottom-0 left-0 right-0 z-10 h-1 bg-white/20">
-          <motion.div
-            className="h-full bg-white/80"
-            animate={{ width: `${pct}%` }}
-            transition={{ duration: 0.2, ease: "linear" }}
+        {/* Seekable progress bar + controls row */}
+        <div className="absolute bottom-0 inset-x-0 z-10 flex flex-col gap-0 pb-2 pt-8 bg-gradient-to-t from-black/60 to-transparent">
+          <div className="flex items-center gap-2 px-3 pb-0.5">
+            {isYouTube && (
+              <VolumeControl
+                volume={volume}
+                muted={muted}
+                onSetVolume={onSetVolume}
+                onToggleMute={onToggleMute}
+              />
+            )}
+          </div>
+          <SeekBar
+            elapsed={elapsed}
+            durationSec={durationSec}
+            pct={pct}
+            onSeek={onSeek}
           />
         </div>
 
@@ -471,8 +765,8 @@ function PlayerUI({
           )}
         </AnimatePresence>
 
-        {/* Now-playing label + topic counter */}
-        <div className="absolute bottom-3 left-4 right-4 z-10 flex items-end justify-between pointer-events-none">
+        {/* Now-playing label + topic counter (sits above the seek bar area) */}
+        <div className="absolute bottom-14 left-4 right-4 z-10 flex items-end justify-between pointer-events-none">
           <div className="max-w-[70%]">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-white/60 leading-none mb-0.5">
               Now playing
@@ -539,7 +833,10 @@ function PlayerUI({
                       : undefined
                   }
                   pct={pct}
+                  elapsed={elapsed}
+                  durationSec={durationSec}
                   isPlaying={isPlaying}
+                  isYouTube={isYouTube}
                   countdownActive={countdownActive}
                   countdownSec={countdownSec}
                   countdownTotal={countdownTotal}
@@ -550,6 +847,11 @@ function PlayerUI({
                   onReturn={onMiniReturn}
                   onPlayNow={onPlayNow}
                   onCancelCountdown={onCancel}
+                  onSeek={onSeek}
+                  volume={volume}
+                  muted={muted}
+                  onSetVolume={onSetVolume}
+                  onToggleMute={onToggleMute}
                   reduced={reduced}
                 />
               )}
@@ -594,7 +896,7 @@ function SimulatedClipPlayer({
   const router = useRouter();
 
   const player = useSimulatedPlayer(clip.durationSec);
-  const { state, elapsed, durationSec, countdownSec, togglePlay, cancelCountdown } = player;
+  const { state, elapsed, durationSec, countdownSec, togglePlay, cancelCountdown, seekTo, volume, muted, setVolume, toggleMute } = player;
 
   const hasNextClip = currentClipIndex < clips.length - 1;
   const nextClip = hasNextClip ? clips[currentClipIndex + 1] : null;
@@ -730,6 +1032,8 @@ function SimulatedClipPlayer({
       isPlaying={isPlaying}
       countdownActive={countdownActive}
       pct={pct}
+      elapsed={elapsed}
+      durationSec={durationSec}
       countdownTotal={countdownTotal}
       showModuleEnd={showModuleEnd}
       showLessonCancelledEnd={showLessonCancelledEnd}
@@ -742,6 +1046,11 @@ function SimulatedClipPlayer({
       onCancel={handleCancel}
       onMiniClose={handleMiniClose}
       onMiniReturn={handleMiniReturn}
+      onSeek={seekTo}
+      volume={volume}
+      muted={muted}
+      onSetVolume={setVolume}
+      onToggleMute={toggleMute}
       inlinePlayerRef={inlinePlayerRef}
     />
   );
@@ -767,7 +1076,7 @@ function YouTubeClipPlayer({
 
   const youtubeHostRef = useRef<HTMLDivElement>(null);
   const player = useYouTubePlayer(youtubeHostRef, clip.videoId!);
-  const { state, elapsed, durationSec, countdownSec, togglePlay, cancelCountdown } = player;
+  const { state, elapsed, durationSec, countdownSec, togglePlay, cancelCountdown, seekTo, volume, muted, setVolume, toggleMute } = player;
 
   const hasNextClip = currentClipIndex < clips.length - 1;
   const nextClip = hasNextClip ? clips[currentClipIndex + 1] : null;
@@ -917,6 +1226,8 @@ function YouTubeClipPlayer({
       isPlaying={isPlaying}
       countdownActive={countdownActive}
       pct={pct}
+      elapsed={elapsed}
+      durationSec={effectiveDuration}
       countdownTotal={countdownTotal}
       showModuleEnd={showModuleEnd}
       showLessonCancelledEnd={showLessonCancelledEnd}
@@ -929,6 +1240,11 @@ function YouTubeClipPlayer({
       onCancel={handleCancel}
       onMiniClose={handleMiniClose}
       onMiniReturn={handleMiniReturn}
+      onSeek={seekTo}
+      volume={volume}
+      muted={muted}
+      onSetVolume={setVolume}
+      onToggleMute={toggleMute}
       inlinePlayerRef={inlinePlayerRef}
     />
   );

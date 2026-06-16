@@ -25,6 +25,16 @@ export interface SimulatedPlayerAPI {
   confirmAutoplay: () => void;
   /** Reset to idle at elapsed=0 (used when switching clips in-place). */
   reset: () => void;
+  /** Seek to an absolute position in seconds (clamped 0..durationSec). */
+  seekTo: (seconds: number) => void;
+  /** Current volume 0..100. */
+  volume: number;
+  /** Whether audio is muted. */
+  muted: boolean;
+  /** Set volume 0..100. */
+  setVolume: (v: number) => void;
+  /** Toggle mute on/off. */
+  toggleMute: () => void;
 }
 
 const DURATION = 20;
@@ -48,6 +58,11 @@ export function useSimulatedPlayer(durationSec = DURATION): SimulatedPlayerAPI {
   const [state, setState] = useState<PlayerState>("idle");
   const [elapsed, setElapsed] = useState(0);
   const [countdownSec, setCountdownSec] = useState(COUNTDOWN_WINDOW);
+  // Volume state: simulated player has no real audio, so these are UI-only.
+  // The volume control is intentionally hidden in PlayerUI when !isYouTube
+  // (see LessonPlayer.tsx) but we expose the API to keep both hooks symmetric.
+  const [volume, setVolumeState] = useState(100);
+  const [muted, setMuted] = useState(false);
 
   // Internal refs to avoid stale closures in the interval
   const elapsedRef = useRef(0);
@@ -104,6 +119,27 @@ export function useSimulatedPlayer(durationSec = DURATION): SimulatedPlayerAPI {
     setElapsed(0);
     setCountdownSec(COUNTDOWN_WINDOW);
     syncState("idle");
+  }, []);
+
+  const seekTo = useCallback((seconds: number) => {
+    const clamped = Math.max(0, Math.min(seconds, durationSec));
+    elapsedRef.current = clamped;
+    setElapsed(clamped);
+    // If we seeked past the countdown window, update countdown display
+    const remaining = durationSec - clamped;
+    if (remaining <= COUNTDOWN_WINDOW && remaining > 0) {
+      setCountdownSec(Math.max(1, Math.ceil(remaining)));
+    } else {
+      setCountdownSec(COUNTDOWN_WINDOW);
+    }
+  }, [durationSec]);
+
+  const setVolume = useCallback((v: number) => {
+    setVolumeState(Math.max(0, Math.min(100, v)));
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    setMuted((prev) => !prev);
   }, []);
 
   // Tick every 200ms for smooth progress, only when actively running
@@ -173,5 +209,10 @@ export function useSimulatedPlayer(durationSec = DURATION): SimulatedPlayerAPI {
     cancelCountdown,
     confirmAutoplay,
     reset,
+    seekTo,
+    volume,
+    muted,
+    setVolume,
+    toggleMute,
   };
 }

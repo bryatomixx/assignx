@@ -43,6 +43,8 @@ export function useYouTubePlayer(
   const [elapsed, setElapsed] = useState(0);
   const [durationSec, setDurationSec] = useState(0);
   const [countdownSec, setCountdownSec] = useState(COUNTDOWN_WINDOW);
+  const [volume, setVolumeState] = useState(100);
+  const [muted, setMuted] = useState(false);
 
   // Internal refs to avoid stale closures
   const stateRef = useRef<PlayerState>("idle");
@@ -181,6 +183,45 @@ export function useYouTubePlayer(
     }
   }, [clearTick, syncState]);
 
+  const seekTo = useCallback((seconds: number) => {
+    const dur = durationRef.current;
+    const clamped = Math.max(0, dur > 0 ? Math.min(seconds, dur) : seconds);
+    // Optimistic update so the bar moves immediately
+    elapsedRef.current = clamped;
+    setElapsed(clamped);
+    try {
+      playerRef.current?.seekTo(clamped, true);
+    } catch {
+      // player not ready
+    }
+  }, []);
+
+  const setVolume = useCallback((v: number) => {
+    const clamped = Math.max(0, Math.min(100, v));
+    setVolumeState(clamped);
+    try {
+      playerRef.current?.setVolume(clamped);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    setMuted((prev) => {
+      const next = !prev;
+      try {
+        if (next) {
+          playerRef.current?.mute();
+        } else {
+          playerRef.current?.unMute();
+        }
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
   // ---- Tab visibility ----
   useEffect(() => {
     const handler = () => {
@@ -270,6 +311,14 @@ export function useYouTubePlayer(
               durationRef.current = dur;
               setDurationSec(dur);
             }
+            // Sync initial volume/muted state from the real player
+            try {
+              const vol = player.getVolume();
+              if (typeof vol === "number") setVolumeState(vol);
+              setMuted(player.isMuted());
+            } catch {
+              // not critical
+            }
           },
           onStateChange: (event: YT.OnStateChangeEvent) => {
             if (isCancelled || destroyedRef.current) return;
@@ -354,5 +403,10 @@ export function useYouTubePlayer(
     cancelCountdown,
     confirmAutoplay,
     reset,
+    seekTo,
+    volume,
+    muted,
+    setVolume,
+    toggleMute,
   };
 }
