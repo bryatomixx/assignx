@@ -11,11 +11,6 @@ import {
 import type { Module, ModuleProgress, Status, User, VideoProgress } from "@/lib/types";
 import { MODULES, TOTAL_LESSONS } from "@/lib/mock/modules";
 import {
-  loadCurrentUserId,
-  saveCurrentUserId,
-  resetDemo as clearStorage,
-} from "@/lib/store/storage";
-import {
   fetchAcademyState,
   toggleComplete as apiToggleComplete,
   markComplete as apiMarkComplete,
@@ -29,27 +24,46 @@ import {
   lockAll as apiLockAll,
   removeUser as apiRemoveUser,
 } from "@/lib/academy/api";
-import { USER_CODES } from "@/lib/mock/users";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { AuthChangeEvent, Session, User as SupabaseUser } from "@supabase/supabase-js";
 
 // ---------------------------------------------------------------------------
-// Derived user builder
+// Placeholder for profiles that do not carry joinedAt from the DB.
 // ---------------------------------------------------------------------------
 
-// Placeholder joinedAt for profiles that do not carry the field from the DB.
 const PLACEHOLDER_JOINED = "2026-01-01";
 
 // ---------------------------------------------------------------------------
-// Context interface (unchanged from the localStorage version)
+// Auth result type returned by signUp/signIn/signOut.
+// ---------------------------------------------------------------------------
+
+export interface AuthResult {
+  error?: string;
+  user?: User;
+}
+
+// ---------------------------------------------------------------------------
+// Context interface
 // ---------------------------------------------------------------------------
 
 interface AcademyContextValue {
   ready: boolean;
+  authLoading: boolean;
   users: User[];
   currentUser: User | undefined;
   modules: Module[];
-  // identity
-  setCurrentUser: (id: string) => void;
+  // auth (real)
+  signUp: (args: { name: string; email: string; password: string }) => Promise<AuthResult>;
+  signIn: (args: { email: string; password: string }) => Promise<AuthResult>;
+  signOut: () => Promise<AuthResult>;
+  // auth (deprecated stubs -- kept for backward compat with existing UI components;
+  //        the frontend-dev must replace calls to these with signIn/signOut)
+  /** @deprecated Use signIn() instead. Will be removed once login page is updated. */
   loginWithCode: (code: string) => User | null;
+  /** @deprecated User-switching is not supported with real auth. No-op. */
+  setCurrentUser: (id: string) => void;
+  /** @deprecated Use signOut() instead. */
+  resetDemo: () => void;
   // progress
   isComplete: (lessonId: string) => boolean;
   toggleComplete: (lessonId: string) => void;
@@ -71,7 +85,7 @@ interface AcademyContextValue {
   lockAll: (userId: string) => void;
   setStatus: (userId: string, status: Status) => void;
   removeUser: (userId: string) => void;
-  // video progress ("furthest point watched" per clip)
+  // video progress
   videoProgressFor: (userId: string, lessonId: string) => VideoProgress[];
   recordVideoProgress: (
     lessonId: string,
@@ -79,64 +93,109 @@ interface AcademyContextValue {
     elapsedSec: number,
     durationSec: number,
   ) => void;
-  // demo
-  resetDemo: () => void;
 }
 
 const AcademyContext = createContext<AcademyContextValue | null>(null);
+
+// ---------------------------------------------------------------------------
+// Error message mapper
+// ---------------------------------------------------------------------------
+
+function mapAuthError(message: string): string {
+  const lc = message.toLowerCase();
+  if (lc.includes("invalid login") || lc.includes("invalid credentials")) {
+    return "Invalid email or password. Please try again.";
+  }
+  if (lc.includes("email not confirmed")) {
+    return "Your email is not confirmed yet. Please contact your administrator.";
+  }
+  if (lc.includes("user already registered") || lc.includes("already been registered") || lc.includes("already exists")) {
+    return "An account with this email already exists.";
+  }
+  if (lc.includes("password should be") || lc.includes("weak password") || lc.includes("at least 6")) {
+    return "Password must be at least 6 characters.";
+  }
+  if (lc.includes("rate limit") || lc.includes("too many")) {
+    return "Too many attempts. Please wait a moment and try again.";
+  }
+  return message;
+}
 
 // ---------------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------------
 
 export function AcademyProvider({ children }: { children: React.ReactNode }) {
+  // Auth state
+  const [authLoading, setAuthLoading] = useState(true);
+  const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
+
+  // Academy data state
   const [ready, setReady] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [progressMap, setProgressMap] = useState<Record<string, string[]>>({});
   const [homeworkMap, setHomeworkMap] = useState<Record<string, string[]>>({});
-  const [currentUserId, setCurrentUserId] = useState<string>("");
-  // Keyed by "${userId}:${lessonId}:${clipIndex}"
   const [videoProgressMap, setVideoProgressMap] = useState<Record<string, VideoProgress>>({});
 
-  // ---- Reverse map: code -> userId UUID (built from USER_CODES constant) ----
-  // USER_CODES is Record<code, uuid> defined in lib/mock/users.ts
-  // The reverse is used by loginWithCode to find the user object after the
-  // users list is populated from the DB.
+  // ---- Auth initialization ----
 
-  // ---- Remote state loader ----
+  useEffect(() => {
+    const sb = getSupabaseBrowserClient();
 
-  const loadState = useCallback(async () => {
+    // Load session on mount.
+    void sb.auth.getUser().then(
+      (result: { data: { user: SupabaseUser | null }; error: unknown }) => {
+        setSupabaseUser(result.data.user ?? null);
+        setAuthLoading(false);
+      },
+      () => {
+        // Network/Supabase failure: assume not authenticated so the UI does not
+        // hang on an infinite loading spinner.
+        setSupabaseUser(null);
+        setAuthLoading(false);
+      },
+    );
+
+    // Subscribe to auth state changes (sign in, sign out, token refresh).
+    const { data: listener } = sb.auth.onAuthStateChange(
+      (_event: AuthChangeEvent, session: Session | null) => {
+        setSupabaseUser(session?.user ?? null);
+        setAuthLoading(false);
+      },
+    );
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  // ---- Remote academy state loader ----
+
+  const loadState = useCallback(async (): Promise<User[]> => {
     try {
       const state = await fetchAcademyState();
 
-      // Build the users list from profiles + moduleAccess
       const builtUsers: User[] = state.profiles.map((profile) => {
-        // Derive unlocked module ids from the moduleAccess rows
         const unlockedModuleIds = state.moduleAccess
           .filter((ma) => ma.userId === profile.id)
           .map((ma) => ma.moduleId);
 
-        // Find the code for this user from the mock code map (code -> uuid)
-        const code =
-          Object.entries(USER_CODES).find(([, uid]) => uid === profile.id)?.[0] ??
-          undefined;
-
         return {
           id: profile.id,
           name: profile.name,
-          email: profile.email,
+          // email is null for other users' profiles (non-admin viewers).
+          email: profile.email ?? "",
           role: profile.role,
           status: profile.status,
           avatar: profile.avatar,
           unlockedModuleIds,
-          joinedAt: PLACEHOLDER_JOINED,
-          code,
+          // Use the real join date when present; fall back to the placeholder.
+          joinedAt: profile.joinedAt ?? PLACEHOLDER_JOINED,
         } satisfies User;
       });
 
       setUsers(builtUsers);
 
-      // Build progress map: userId -> completedLessonIds[]
       const pm: Record<string, string[]> = {};
       for (const row of state.progress) {
         if (!pm[row.userId]) pm[row.userId] = [];
@@ -144,7 +203,6 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
       }
       setProgressMap(pm);
 
-      // Build homework map: userId -> doneLessonIds[]
       const hw: Record<string, string[]> = {};
       for (const row of state.homework) {
         if (!hw[row.userId]) hw[row.userId] = [];
@@ -152,7 +210,6 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
       }
       setHomeworkMap(hw);
 
-      // Build video progress map: key -> VideoProgress
       const vpm: Record<string, VideoProgress> = {};
       for (const row of state.videoProgress) {
         vpm[`${row.userId}:${row.lessonId}:${row.clipIndex}`] = {
@@ -164,50 +221,110 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
         };
       }
       setVideoProgressMap(vpm);
+      setReady(true);
+      return builtUsers;
     } catch {
       // Keep whatever state is already in memory so the UI does not go blank.
-    } finally {
       setReady(true);
+      return [];
     }
   }, []);
 
-  // Hydrate from the server API on mount. Session (currentUserId) still comes
-  // from localStorage (mock auth, unchanged).
+  // Load academy state when the user is known (signed in or out).
   useEffect(() => {
-    setCurrentUserId(loadCurrentUserId());
-    void loadState();
-  }, [loadState]);
+    if (!authLoading) {
+      void loadState();
+    }
+  }, [authLoading, loadState]);
 
-  // ---- Identity (mock auth, localStorage only) ----
+  // ---- Auth actions ----
 
-  const setCurrentUser = useCallback((id: string) => {
-    setCurrentUserId(id);
-    saveCurrentUserId(id);
+  const signUp = useCallback(
+    async (args: { name: string; email: string; password: string }): Promise<AuthResult> => {
+      const sb = getSupabaseBrowserClient();
+      const { data, error } = await sb.auth.signUp({
+        email: args.email,
+        password: args.password,
+        options: {
+          // handle_new_user trigger reads raw_user_meta_data->>'name' to populate profiles.name.
+          data: { name: args.name },
+        },
+      });
+      if (error) {
+        return { error: mapAuthError(error.message) };
+      }
+      // Reload academy state to include the new profile row created by the trigger.
+      // Resolve the signed-up user (incl. role) from the freshly loaded list so
+      // the caller can redirect without reading stale React state.
+      const builtUsers = await loadState();
+      const uid = data.user?.id;
+      const user = uid ? builtUsers.find((u) => u.id === uid) : undefined;
+      return { user };
+    },
+    [loadState],
+  );
+
+  const signIn = useCallback(
+    async (args: { email: string; password: string }): Promise<AuthResult> => {
+      const sb = getSupabaseBrowserClient();
+      const { data, error } = await sb.auth.signInWithPassword({
+        email: args.email,
+        password: args.password,
+      });
+      if (error) {
+        return { error: mapAuthError(error.message) };
+      }
+      // Load academy state once and resolve the signed-in user (incl. role) from
+      // the freshly loaded list so the caller can redirect without reading stale
+      // React state. onAuthStateChange handles the normal lifecycle separately.
+      const builtUsers = await loadState();
+      const uid = data.user?.id;
+      const user = uid ? builtUsers.find((u) => u.id === uid) : undefined;
+      return { user };
+    },
+    [loadState],
+  );
+
+  const signOut = useCallback(async (): Promise<AuthResult> => {
+    const sb = getSupabaseBrowserClient();
+    const { error } = await sb.auth.signOut();
+    if (error) {
+      return { error: mapAuthError(error.message) };
+    }
+    return {};
   }, []);
 
+  // ---- Deprecated stub callbacks (kept for backward compat until UI is updated) ----
+
+  // loginWithCode: the login page currently calls this. It is a no-op under real auth.
+  // The frontend-dev must replace it with a real email/password form using signIn().
   const loginWithCode = useCallback(
-    (code: string): User | null => {
-      const trimmed = code.trim();
-      // Try USER_CODES map first (code -> UUID)
-      const uuidFromMap = USER_CODES[trimmed];
-      if (uuidFromMap) {
-        const match = users.find((u) => u.id === uuidFromMap);
-        if (match) {
-          setCurrentUser(match.id);
-          return match;
-        }
-      }
-      // Fallback: scan users list (handles codes that are in DB but not in the
-      // static map -- rare, but keeps the UI from breaking).
-      const match = users.find((u) => u.code === trimmed);
-      if (match) {
-        setCurrentUser(match.id);
-        return match;
-      }
+    (...args: [string]): User | null => {
+      void args;
+      console.warn(
+        "[AcademyProvider] loginWithCode() is deprecated. Use signIn() with email/password.",
+      );
       return null;
     },
-    [users, setCurrentUser],
+    [],
   );
+
+  // setCurrentUser: user-switching was a demo-only feature. No-op under real auth.
+  const setCurrentUser = useCallback((...args: [string]): void => {
+    void args;
+    console.warn(
+      "[AcademyProvider] setCurrentUser() is deprecated. Use signIn() to authenticate.",
+    );
+  }, []);
+
+  // resetDemo: was used to clear localStorage session. Now delegates to signOut().
+  const resetDemo = useCallback((): void => {
+    void signOut();
+  }, [signOut]);
+
+  // ---- currentUserId derived from real session ----
+
+  const currentUserId = supabaseUser?.id ?? "";
 
   // ---- Progress getters ----
 
@@ -224,11 +341,11 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
   const moduleProgress = useCallback(
     (moduleId: string, userId?: string): ModuleProgress => {
       const uid = userId ?? currentUserId;
-      const module = MODULES.find((m) => m.id === moduleId);
-      const total = module?.lessons.length ?? 0;
+      const mod = MODULES.find((m) => m.id === moduleId);
+      const total = mod?.lessons.length ?? 0;
       const done = completedFor(uid);
       const completed =
-        module?.lessons.filter((l) => done.includes(l.id)).length ?? 0;
+        mod?.lessons.filter((l) => done.includes(l.id)).length ?? 0;
       return {
         moduleId,
         total,
@@ -248,7 +365,7 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
     [currentUserId, completedFor],
   );
 
-  // ---- Progress mutations (API + refetch) ----
+  // ---- Progress mutations ----
 
   const toggleComplete = useCallback(
     (lessonId: string) => {
@@ -274,7 +391,7 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
     [homeworkMap, currentUserId],
   );
 
-  // ---- Homework mutations (API + refetch) ----
+  // ---- Homework mutations ----
 
   const toggleHomework = useCallback(
     (lessonId: string) => {
@@ -313,7 +430,7 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
     [users, currentUserId],
   );
 
-  // ---- Admin mutations (API + refetch) ----
+  // ---- Admin mutations ----
 
   const unlockModule = useCallback(
     (userId: string, moduleId: string) => {
@@ -368,10 +485,6 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
   );
 
   // ---- Video progress ----
-  // recordVideoProgress is called every second during playback. To avoid
-  // chatty network traffic and state flicker:
-  //   1. Update the local videoProgressMap optimistically (only if elapsed advances).
-  //   2. Persist to the API in fire-and-forget (no await, no refetch).
 
   const recordVideoProgress = useCallback(
     (
@@ -384,7 +497,6 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
       const key = `${currentUserId}:${lessonId}:${clipIndex}`;
       setVideoProgressMap((prev) => {
         const existing = prev[key];
-        // Only advance; never let elapsed go backwards.
         if (existing && existing.elapsedSec >= elapsedSec) return prev;
         const entry: VideoProgress = {
           userId: currentUserId,
@@ -395,7 +507,6 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
         };
         return { ...prev, [key]: entry };
       });
-      // Fire-and-forget: persist the new maximum without blocking or refetching.
       void apiRecordVideoProgress(
         currentUserId,
         lessonId,
@@ -415,30 +526,25 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
     [videoProgressMap],
   );
 
-  // ---- currentUser derived from users + currentUserId ----
+  // ---- currentUser derived from users list + real session uid ----
 
   const currentUser = useMemo<User | undefined>(
-    () => users.find((u) => u.id === currentUserId) ?? users[0],
+    () => users.find((u) => u.id === currentUserId),
     [users, currentUserId],
   );
-
-  // ---- Demo reset: only clears local session; DB state is untouched ----
-
-  const resetDemo = useCallback(() => {
-    clearStorage();
-    window.location.reload();
-  }, []);
 
   // ---- Context value ----
 
   const value = useMemo<AcademyContextValue>(
     () => ({
       ready,
+      authLoading,
       users,
       currentUser,
       modules: MODULES,
-      setCurrentUser,
-      loginWithCode,
+      signUp,
+      signIn,
+      signOut,
       isComplete,
       toggleComplete,
       markComplete,
@@ -458,14 +564,19 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
       removeUser,
       videoProgressFor,
       recordVideoProgress,
+      // deprecated stubs
+      loginWithCode,
+      setCurrentUser,
       resetDemo,
     }),
     [
       ready,
+      authLoading,
       users,
       currentUser,
-      setCurrentUser,
-      loginWithCode,
+      signUp,
+      signIn,
+      signOut,
       isComplete,
       toggleComplete,
       markComplete,
@@ -485,6 +596,8 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
       removeUser,
       videoProgressFor,
       recordVideoProgress,
+      loginWithCode,
+      setCurrentUser,
       resetDemo,
     ],
   );

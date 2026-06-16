@@ -3,9 +3,15 @@
  *
  * Typed client-side wrappers for the community API route handlers.
  * Uses fetch only. Never imports server-only modules (lib/supabase/server.ts).
- * All functions accept userId as the first argument. In demo mode the caller
- * passes the active user's id without auth. In production this must be replaced
- * by a server-side session; never trust a client-supplied identity in real auth.
+ *
+ * CONTRACT CHANGE (real auth):
+ *   - userId is NO LONGER sent in the request body. The server derives the
+ *     actor identity from the session cookie. The `userId` parameter in each
+ *     function signature is retained for backward compat with call-sites in
+ *     the provider but is IGNORED server-side. It will be removed in a future
+ *     cleanup once the provider stops passing it.
+ *   - targetUserId is still sent in the payload for admin actions that need to
+ *     identify the TARGET user; the ACTOR is always the session user.
  */
 
 import type {
@@ -35,7 +41,6 @@ export interface CommunitySettings {
   globalApproval: boolean;
 }
 
-/** Full raw state returned by GET /api/community/state */
 export interface CommunityState {
   posts: Post[];
   comments: Comment[];
@@ -47,25 +52,25 @@ export interface CommunityState {
   profiles: CommunityProfile[];
 }
 
-/** Response shape from POST /api/community/action */
 export interface ActionResult {
   ok: boolean;
   error?: string;
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers
+// Internal helper
 // ---------------------------------------------------------------------------
 
+// _userId is accepted for compat but not forwarded; server uses session.
 async function dispatchAction(
   action: string,
-  userId: string,
+  _userId: string,
   payload?: Record<string, unknown>,
 ): Promise<ActionResult> {
   const res = await fetch("/api/community/action", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, userId, payload }),
+    body: JSON.stringify({ action, payload }),
   });
   const data = (await res.json()) as ActionResult;
   return data;
@@ -75,10 +80,6 @@ async function dispatchAction(
 // State fetch
 // ---------------------------------------------------------------------------
 
-/**
- * Fetches the full community state from the server.
- * The client is responsible for computing derived data (feed filters, counts, etc.).
- */
 export async function fetchCommunityState(): Promise<CommunityState> {
   const res = await fetch("/api/community/state", { cache: "no-store" });
   if (!res.ok) {
@@ -212,7 +213,7 @@ export async function unfollow(
 }
 
 // ---------------------------------------------------------------------------
-// Settings actions (admin or mod with canManageApproval)
+// Settings actions
 // ---------------------------------------------------------------------------
 
 export async function setGlobalApproval(
@@ -231,7 +232,7 @@ export async function setAutoApprove(
 }
 
 // ---------------------------------------------------------------------------
-// Mod management (admin only)
+// Mod management
 // ---------------------------------------------------------------------------
 
 export async function promoteMod(

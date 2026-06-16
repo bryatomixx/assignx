@@ -4,9 +4,15 @@
  * Typed client-side wrappers for the academy API route handlers.
  * Uses fetch only. Never imports server-only modules (lib/supabase/server.ts).
  *
- * In demo mode the caller passes the active user's id without auth. In
- * production this must be replaced by a server-side session; never trust a
- * client-supplied identity in a real app.
+ * CONTRACT CHANGE (real auth):
+ *   - userId is NO LONGER sent in the request body for self-scoped actions.
+ *     The server derives the actor identity from the session cookie.
+ *   - For admin actions that target another user, targetUserId is still sent
+ *     in the payload -- but the server ignores any "actorId" from the body
+ *     and uses the session uid instead.
+ *   - The `userId` parameter is retained in the function signatures only so
+ *     that the AcademyProvider call-sites do not need simultaneous changes.
+ *     The value is IGNORED by the server. It will be removed in a future cleanup.
  */
 
 import type { Status } from "@/lib/types";
@@ -15,19 +21,16 @@ import type { Status } from "@/lib/types";
 // Shared types
 // ---------------------------------------------------------------------------
 
-/** A single lesson_progress row, camelCase. */
 export interface AcademyProgressRow {
   userId: string;
   lessonId: string;
 }
 
-/** A single homework row, camelCase. */
 export interface AcademyHomeworkRow {
   userId: string;
   lessonId: string;
 }
 
-/** A single video_progress row, camelCase. */
 export interface AcademyVideoProgressRow {
   userId: string;
   lessonId: string;
@@ -36,23 +39,23 @@ export interface AcademyVideoProgressRow {
   durationSec: number;
 }
 
-/** A single module_access row, camelCase. */
 export interface AcademyModuleAccessRow {
   userId: string;
   moduleId: string;
 }
 
-/** Profile fields returned by GET /api/academy/state. */
 export interface AcademyProfileRow {
   id: string;
   name: string;
-  email: string;
+  // Email is PII: null for other users' profiles unless the viewer is an admin.
+  email: string | null;
   role: "admin" | "student";
   status: "active" | "paused";
   avatar: string;
+  // ISO date the user joined; null if not set in the DB.
+  joinedAt: string | null;
 }
 
-/** Full raw state returned by GET /api/academy/state. */
 export interface AcademyState {
   profiles: AcademyProfileRow[];
   progress: AcademyProgressRow[];
@@ -61,7 +64,6 @@ export interface AcademyState {
   moduleAccess: AcademyModuleAccessRow[];
 }
 
-/** Response shape from POST /api/academy/action. */
 export interface ActionResult {
   ok: boolean;
   error?: string;
@@ -71,15 +73,17 @@ export interface ActionResult {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+// Self-scoped action: userId arg is accepted for backward compat but ignored
+// server-side (server reads session). Only action + payload are sent.
 async function dispatchAction(
   action: string,
-  userId: string,
+  _userId: string,
   payload?: Record<string, unknown>,
 ): Promise<ActionResult> {
   const res = await fetch("/api/academy/action", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, userId, payload }),
+    body: JSON.stringify({ action, payload }),
   });
   const data = (await res.json()) as ActionResult;
   return data;
@@ -89,10 +93,6 @@ async function dispatchAction(
 // State fetch
 // ---------------------------------------------------------------------------
 
-/**
- * Fetches the full academy state from the server.
- * The client is responsible for computing derived data (progress pcts, access, etc.).
- */
 export async function fetchAcademyState(): Promise<AcademyState> {
   const res = await fetch("/api/academy/state", { cache: "no-store" });
   if (!res.ok) {
@@ -106,10 +106,6 @@ export async function fetchAcademyState(): Promise<AcademyState> {
 // User-scoped progress actions
 // ---------------------------------------------------------------------------
 
-/**
- * Toggles completion of a lesson for the acting user.
- * Inserts a lesson_progress row if not present; deletes it if present.
- */
 export async function toggleComplete(
   userId: string,
   lessonId: string,
@@ -117,10 +113,6 @@ export async function toggleComplete(
   return dispatchAction("toggleComplete", userId, { lessonId });
 }
 
-/**
- * Marks a lesson as complete for the acting user. Idempotent -- never removes
- * an existing completion row.
- */
 export async function markComplete(
   userId: string,
   lessonId: string,
@@ -128,9 +120,6 @@ export async function markComplete(
   return dispatchAction("markComplete", userId, { lessonId });
 }
 
-/**
- * Toggles homework completion for a lesson for the acting user.
- */
 export async function toggleHomework(
   userId: string,
   lessonId: string,
@@ -138,10 +127,6 @@ export async function toggleHomework(
   return dispatchAction("toggleHomework", userId, { lessonId });
 }
 
-/**
- * Records the furthest video position watched for a clip.
- * The server only advances elapsed_sec -- it never lets it go backwards.
- */
 export async function recordVideoProgress(
   userId: string,
   lessonId: string,
@@ -161,9 +146,6 @@ export async function recordVideoProgress(
 // Admin-only actions
 // ---------------------------------------------------------------------------
 
-/**
- * Sets the status (active | paused) of any user. Admin only.
- */
 export async function setStatus(
   userId: string,
   targetUserId: string,
@@ -172,9 +154,6 @@ export async function setStatus(
   return dispatchAction("setStatus", userId, { targetUserId, status });
 }
 
-/**
- * Grants access to a single paid module for a target user. Admin only.
- */
 export async function unlockModule(
   userId: string,
   targetUserId: string,
@@ -183,9 +162,6 @@ export async function unlockModule(
   return dispatchAction("unlockModule", userId, { targetUserId, moduleId });
 }
 
-/**
- * Revokes access to a single paid module for a target user. Admin only.
- */
 export async function lockModule(
   userId: string,
   targetUserId: string,
@@ -194,9 +170,6 @@ export async function lockModule(
   return dispatchAction("lockModule", userId, { targetUserId, moduleId });
 }
 
-/**
- * Grants access to all paid modules for a target user. Admin only.
- */
 export async function unlockAll(
   userId: string,
   targetUserId: string,
@@ -204,9 +177,6 @@ export async function unlockAll(
   return dispatchAction("unlockAll", userId, { targetUserId });
 }
 
-/**
- * Revokes access to all modules for a target user. Admin only.
- */
 export async function lockAll(
   userId: string,
   targetUserId: string,
@@ -214,10 +184,6 @@ export async function lockAll(
   return dispatchAction("lockAll", userId, { targetUserId });
 }
 
-/**
- * Deletes a user's profile. Cascades to all related rows (progress, homework,
- * video_progress, module_access, posts, comments, etc.). Admin only.
- */
 export async function removeUser(
   userId: string,
   targetUserId: string,
@@ -225,9 +191,6 @@ export async function removeUser(
   return dispatchAction("removeUser", userId, { targetUserId });
 }
 
-/**
- * Admin override: sets homework done/undone for any user on any lesson.
- */
 export async function setHomeworkDone(
   userId: string,
   targetUserId: string,

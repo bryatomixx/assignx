@@ -1,84 +1,486 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+// Next.js 16 App Router: useRouter from 'next/navigation', useSearchParams needs Suspense.
+// Docs read: use-router.md, use-search-params.md
+
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { KeyRound, ArrowRight } from "lucide-react";
+import { Loader2, CheckCircle2 } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/Button";
 import { useAcademy } from "@/lib/store/AcademyProvider";
+import { cn } from "@/lib/utils";
 
-export default function LoginPage() {
+// ---------------------------------------------------------------------------
+// Tab control types
+// ---------------------------------------------------------------------------
+
+type Tab = "signin" | "signup";
+
+// ---------------------------------------------------------------------------
+// PasswordChangedBanner -- reads ?msg=password-changed from URL
+// ---------------------------------------------------------------------------
+
+function PasswordChangedBanner() {
+  const params = useSearchParams();
+  if (params.get("msg") !== "password-changed") return null;
+  return (
+    <div
+      role="status"
+      className="mb-5 flex items-start gap-2.5 rounded-xl bg-success/10 px-4 py-3 text-sm text-success"
+    >
+      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+      <span>Your password has been updated. Sign in with your new password.</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FieldGroup: label + input pattern
+// ---------------------------------------------------------------------------
+
+function FieldGroup({
+  id,
+  label,
+  type = "text",
+  autoComplete,
+  value,
+  onChange,
+  placeholder,
+  error,
+  hint,
+}: {
+  id: string;
+  label: string;
+  type?: string;
+  autoComplete?: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  error?: string;
+  hint?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label
+        htmlFor={id}
+        className="text-sm font-semibold text-ink-700"
+      >
+        {label}
+      </label>
+      <input
+        id={id}
+        type={type}
+        autoComplete={autoComplete}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={cn(
+          "w-full rounded-xl border bg-surface-2 px-4 py-3 text-[15px] outline-none transition-colors",
+          "focus:border-brand-300 focus:ring-2 focus:ring-brand-100",
+          error ? "border-red-400" : "border-line",
+        )}
+      />
+      {hint && !error && (
+        <p className="text-[11px] text-ink-300">{hint}</p>
+      )}
+      {error && (
+        <p role="alert" className="text-[13px] font-medium text-red-600">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sign In form
+// ---------------------------------------------------------------------------
+
+function SignInForm({ onSwitchTab }: { onSwitchTab: () => void }) {
   const router = useRouter();
-  const { loginWithCode } = useAcademy();
-  const [code, setCode] = useState("");
-  const [error, setError] = useState(false);
+  const { signIn } = useAcademy();
 
-  const submit = (e: React.FormEvent) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const validate = (): string | null => {
+    if (!email.trim()) return "Email is required.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Enter a valid email address.";
+    if (!password) return "Password is required.";
+    return null;
+  };
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const user = loginWithCode(code);
-    if (!user) {
-      setError(true);
+    const valErr = validate();
+    if (valErr) { setError(valErr); return; }
+
+    setLoading(true);
+    setError(null);
+    const result = await signIn({ email: email.trim(), password });
+    setLoading(false);
+
+    if (result.error) {
+      setError(result.error);
       return;
     }
-    router.push(user.role === "admin" ? "/admin" : "/classroom");
+
+    // Redirect based on the resolved user's role returned by signIn (not stale
+    // closure state).
+    router.push(result.user?.role === "admin" ? "/admin" : "/classroom");
+  };
+
+  // Map specific error patterns to actionable messages with a sign-up prompt.
+  const renderError = () => {
+    if (!error) return null;
+    const isAlreadyExists = error.toLowerCase().includes("already exists");
+    return (
+      <div role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+        {isAlreadyExists ? (
+          <>
+            An account with this email already exists.{" "}
+            <button
+              type="button"
+              onClick={onSwitchTab}
+              className="font-semibold underline"
+            >
+              Sign in instead
+            </button>
+          </>
+        ) : (
+          error
+        )}
+      </div>
+    );
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-5">
+    <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+      {renderError()}
+
+      <FieldGroup
+        id="signin-email"
+        label="Email"
+        type="email"
+        autoComplete="email"
+        value={email}
+        onChange={(v) => { setEmail(v); setError(null); }}
+        placeholder="you@example.com"
+      />
+      <FieldGroup
+        id="signin-password"
+        label="Password"
+        type="password"
+        autoComplete="current-password"
+        value={password}
+        onChange={(v) => { setPassword(v); setError(null); }}
+        placeholder="••••••••"
+      />
+
+      <p className="text-[12px] text-ink-300">
+        Forgot your password? Contact your administrator.
+      </p>
+
+      <Button
+        type="submit"
+        size="lg"
+        className="w-full"
+        disabled={loading}
+      >
+        {loading ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Signing in...
+          </>
+        ) : (
+          "Sign in"
+        )}
+      </Button>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sign Up form
+// ---------------------------------------------------------------------------
+
+function SignUpForm({ onSwitchTab }: { onSwitchTab: () => void }) {
+  const router = useRouter();
+  const { signUp } = useAcademy();
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [globalError, setGlobalError] = useState<string | null>(null);
+
+  const validate = (): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      errs.name = "Full name is required.";
+    } else if (trimmedName.length < 2 || trimmedName.length > 80) {
+      errs.name = "Name must be between 2 and 80 characters.";
+    }
+    if (!email.trim()) {
+      errs.email = "Email is required.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errs.email = "Enter a valid email address.";
+    }
+    if (!password) {
+      errs.password = "Password is required.";
+    } else if (password.length < 8) {
+      errs.password = "Password must be at least 8 characters.";
+    }
+    if (!confirm) {
+      errs.confirm = "Please confirm your password.";
+    } else if (confirm !== password) {
+      errs.confirm = "Passwords do not match.";
+    }
+    return errs;
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      return;
+    }
+
+    setLoading(true);
+    setFieldErrors({});
+    setGlobalError(null);
+
+    const result = await signUp({
+      name: name.trim(),
+      email: email.trim(),
+      password,
+    });
+
+    setLoading(false);
+
+    if (result.error) {
+      setGlobalError(result.error);
+      // If the account already exists, switch to the Sign In tab (design intent).
+      if (result.error.toLowerCase().includes("already exists")) {
+        onSwitchTab();
+      }
+      return;
+    }
+
+    // Redirect based on the resolved user's role returned by signUp (not stale
+    // closure state).
+    router.push(result.user?.role === "admin" ? "/admin" : "/classroom");
+  };
+
+  const renderGlobalError = () => {
+    if (!globalError) return null;
+    const isAlreadyExists = globalError.toLowerCase().includes("already exists");
+    return (
+      <div role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+        {isAlreadyExists ? (
+          <>
+            An account with this email already exists.{" "}
+            <button
+              type="button"
+              onClick={onSwitchTab}
+              className="font-semibold underline"
+            >
+              Sign in instead
+            </button>
+          </>
+        ) : (
+          globalError
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+      {renderGlobalError()}
+
+      <FieldGroup
+        id="signup-name"
+        label="Full name"
+        type="text"
+        autoComplete="name"
+        value={name}
+        onChange={(v) => { setName(v); setFieldErrors((p) => ({ ...p, name: "" })); }}
+        placeholder="Jane Smith"
+        error={fieldErrors.name}
+      />
+      <FieldGroup
+        id="signup-email"
+        label="Email"
+        type="email"
+        autoComplete="email"
+        value={email}
+        onChange={(v) => { setEmail(v); setFieldErrors((p) => ({ ...p, email: "" })); }}
+        placeholder="you@example.com"
+        error={fieldErrors.email}
+        hint="Use the same email address associated with your agency account."
+      />
+      <FieldGroup
+        id="signup-password"
+        label="Password"
+        type="password"
+        autoComplete="new-password"
+        value={password}
+        onChange={(v) => { setPassword(v); setFieldErrors((p) => ({ ...p, password: "" })); }}
+        placeholder="Min. 8 characters"
+        error={fieldErrors.password}
+      />
+      <FieldGroup
+        id="signup-confirm"
+        label="Confirm password"
+        type="password"
+        autoComplete="new-password"
+        value={confirm}
+        onChange={(v) => { setConfirm(v); setFieldErrors((p) => ({ ...p, confirm: "" })); }}
+        placeholder="Repeat your password"
+        error={fieldErrors.confirm}
+      />
+
+      <Button
+        type="submit"
+        size="lg"
+        className="w-full"
+        disabled={loading}
+      >
+        {loading ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Creating account...
+          </>
+        ) : (
+          "Create account"
+        )}
+      </Button>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main login page (wrapped in Suspense for useSearchParams)
+// ---------------------------------------------------------------------------
+
+function LoginInner() {
+  const router = useRouter();
+  const { currentUser, authLoading } = useAcademy();
+  const [tab, setTab] = useState<Tab>("signin");
+
+  // If already authenticated, send the user to their home by role. Guarded by
+  // authLoading so we do not redirect before the session resolves.
+  useEffect(() => {
+    if (!authLoading && currentUser) {
+      router.replace(currentUser.role === "admin" ? "/admin" : "/classroom");
+    }
+  }, [authLoading, currentUser, router]);
+
+  return (
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-10">
+      {/* Background blob */}
       <div className="pointer-events-none absolute left-1/2 top-0 h-[480px] w-[760px] -translate-x-1/2 rounded-full bg-gradient-to-b from-brand-100 via-brand-50 to-transparent blur-2xl" />
 
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
-        className="relative w-full max-w-md rounded-3xl border border-line bg-white p-8 text-center"
+        className="relative w-full max-w-[420px]"
       >
-        <div className="mb-6 flex justify-center">
-          <Logo />
-        </div>
-        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl gradient-brand text-white">
-          <KeyRound className="h-7 w-7" />
-        </span>
-        <h1 className="mt-4 text-2xl">Enter your access code</h1>
-        <p className="mt-1.5 text-sm text-ink-500">
-          Members sign in with the code from their welcome email.
-        </p>
-
-        <form onSubmit={submit} className="mt-6">
-          <input
-            value={code}
-            onChange={(e) => {
-              setCode(e.target.value);
-              setError(false);
-            }}
-            inputMode="numeric"
-            placeholder="• • • •"
-            className="w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-center text-2xl font-semibold tracking-[0.4em] text-ink-900 outline-none focus:border-brand-300"
-          />
-          {error && (
-            <p className="mt-2 text-sm font-medium text-red-600">
-              That code didn&apos;t match. Try again.
-            </p>
-          )}
-          <Button size="lg" className="mt-4 w-full" type="submit">
-            Enter <ArrowRight className="h-4 w-4" />
-          </Button>
-        </form>
-
-        <div className="mt-5 rounded-xl bg-surface-2 px-4 py-3 text-xs text-ink-500">
-          Demo codes — Member: <span className="font-semibold">1234</span> ·
-          Admin: <span className="font-semibold">9999</span>
-        </div>
-
-        <Link
-          href="/classroom/30-day-challenge"
-          className="mt-4 inline-block text-sm font-medium text-brand-500 hover:underline"
+        {/* Segmented tab control -- above the card */}
+        <div
+          role="tablist"
+          aria-label="Authentication options"
+          className="mb-3 flex rounded-xl bg-surface-3 p-1"
         >
-          Or browse the free course →
-        </Link>
+          <button
+            role="tab"
+            aria-selected={tab === "signin"}
+            aria-controls="panel-signin"
+            id="tab-signin"
+            type="button"
+            onClick={() => setTab("signin")}
+            className={cn(
+              "flex-1 rounded-[9px] py-2 text-sm font-semibold transition-all",
+              tab === "signin"
+                ? "bg-white text-ink-900 shadow-sm"
+                : "text-ink-500 hover:text-ink-700",
+            )}
+          >
+            Sign In
+          </button>
+          <button
+            role="tab"
+            aria-selected={tab === "signup"}
+            aria-controls="panel-signup"
+            id="tab-signup"
+            type="button"
+            onClick={() => setTab("signup")}
+            className={cn(
+              "flex-1 rounded-[9px] py-2 text-sm font-semibold transition-all",
+              tab === "signup"
+                ? "bg-white text-ink-900 shadow-sm"
+                : "text-ink-500 hover:text-ink-700",
+            )}
+          >
+            Sign Up
+          </button>
+        </div>
+
+        {/* Card */}
+        <div className="rounded-3xl border border-line bg-white p-8">
+          {/* Logo */}
+          <div className="mb-6 flex justify-center">
+            <Logo />
+          </div>
+
+          {/* Password changed banner (reads ?msg param) */}
+          <Suspense>
+            <PasswordChangedBanner />
+          </Suspense>
+
+          {/* Sign In panel */}
+          <div
+            role="tabpanel"
+            id="panel-signin"
+            aria-labelledby="tab-signin"
+            hidden={tab !== "signin"}
+          >
+            {tab === "signin" && (
+              <SignInForm onSwitchTab={() => setTab("signup")} />
+            )}
+          </div>
+
+          {/* Sign Up panel */}
+          <div
+            role="tabpanel"
+            id="panel-signup"
+            aria-labelledby="tab-signup"
+            hidden={tab !== "signup"}
+          >
+            {tab === "signup" && (
+              <SignUpForm onSwitchTab={() => setTab("signin")} />
+            )}
+          </div>
+        </div>
       </motion.div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginInner />
+    </Suspense>
   );
 }

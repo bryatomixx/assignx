@@ -1,4 +1,4 @@
-import { createAdminClient } from "@/lib/supabase/server";
+import { createAdminClient, createServerSupabase } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ModPermissions, PostMediaType } from "@/lib/types";
 
@@ -26,10 +26,10 @@ export const dynamic = "force-dynamic";
 
 interface ActionBody {
   action: string;
-  // userId travels from the client. Trusted only in demo mode (no real auth).
-  // SECURITY NOTE: in production this must be replaced by reading the session
-  // from the auth cookie. Never trust the client for identity in a real app.
-  userId: string;
+  // userId is NO LONGER trusted from the client. The server derives the actor
+  // identity from the authenticated session cookie. Any userId in the body is
+  // ignored for identity purposes.
+  userId?: string; // retained for backward compat; server ignores it
   payload?: Record<string, unknown>;
 }
 
@@ -819,6 +819,22 @@ async function handlePurgeUser(
 // ---------------------------------------------------------------------------
 
 export async function POST(request: Request): Promise<Response> {
+  // --- 1. Authenticate: derive actor from session cookie ---
+  let sessionClient: Awaited<ReturnType<typeof createServerSupabase>>;
+  try {
+    sessionClient = await createServerSupabase();
+  } catch {
+    return err("Auth service unavailable", 503);
+  }
+
+  const { data: { user }, error: authError } = await sessionClient.auth.getUser();
+  if (authError || !user) {
+    return err("Unauthorized", 401);
+  }
+
+  const sessionUserId = user.id;
+
+  // --- 2. Parse body ---
   let body: ActionBody;
   try {
     body = (await request.json()) as ActionBody;
@@ -826,20 +842,18 @@ export async function POST(request: Request): Promise<Response> {
     return err("Invalid JSON body");
   }
 
-  const { action, userId, payload = {} } = body;
+  const { action, payload = {} } = body;
 
   if (!action || typeof action !== "string") {
     return err("action is required");
   }
-  if (!userId || typeof userId !== "string") {
-    return err("userId is required");
-  }
 
+  // --- 3. Load actor context from DB (authoritative for role/status/modPerms) ---
   const db = createAdminClient();
 
   let ctx: ActorContext | null;
   try {
-    ctx = await loadActor(db, userId);
+    ctx = await loadActor(db, sessionUserId);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load actor";
     return Response.json({ ok: false, error: msg }, { status: 500 });

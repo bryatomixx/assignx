@@ -1,4 +1,4 @@
-import { createAdminClient } from "@/lib/supabase/server";
+import { createAdminClient, createServerSupabase } from "@/lib/supabase/server";
 import type {
   Post,
   Comment,
@@ -145,6 +145,19 @@ function mapMod(r: DbModerator): ModPermissions {
 // ---- Route handler ----
 
 export async function GET(): Promise<Response> {
+  // Require authenticated session before returning any community state.
+  let sessionUserId: string;
+  try {
+    const sessionClient = await createServerSupabase();
+    const { data: { user }, error: authError } = await sessionClient.auth.getUser();
+    if (authError || !user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    sessionUserId = user.id;
+  } catch {
+    return Response.json({ error: "Auth service unavailable" }, { status: 503 });
+  }
+
   try {
     const db = createAdminClient();
 
@@ -162,7 +175,12 @@ export async function GET(): Promise<Response> {
       db.from("comments").select("*").order("created_at", { ascending: true }),
       db.from("post_likes").select("user_id, post_id"),
       db.from("follows").select("follower_id, followee_id"),
-      db.from("notifications").select("*").order("created_at", { ascending: false }),
+      // Only the recipient's own notifications, never everyone's.
+      db
+        .from("notifications")
+        .select("*")
+        .eq("recipient_id", sessionUserId)
+        .order("created_at", { ascending: false }),
       db.from("community_settings").select("global_approval").eq("id", 1).single(),
       db.from("moderators").select("*"),
       db.from("profiles").select("id, name, role, status, avatar, auto_approve"),

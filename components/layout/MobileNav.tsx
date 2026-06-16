@@ -43,7 +43,20 @@ export function MobileNav() {
             </Link>
           );
         })}
-        {ready && currentUser && <Avatar emoji={currentUser.avatar} size="sm" />}
+
+        {/* Avatar links to profile page on mobile */}
+        {ready && currentUser && (
+          <Link
+            href="/profile"
+            aria-label="Your profile"
+            className={cn(
+              "ml-1 rounded-full transition-opacity hover:opacity-80",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300",
+            )}
+          >
+            <Avatar emoji={currentUser.avatar} size="sm" />
+          </Link>
+        )}
       </nav>
     </header>
   );

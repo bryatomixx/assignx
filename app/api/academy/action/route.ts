@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/server";
+import { createServerSupabase } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // ---------------------------------------------------------------------------
@@ -9,7 +10,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 const PAID_MODULE_IDS = ["mod-scale", "mod-voice", "mod-enterprise"];
 
-// Disable caching -- this route mutates state.
 export const dynamic = "force-dynamic";
 
 // ---------------------------------------------------------------------------
@@ -18,10 +18,10 @@ export const dynamic = "force-dynamic";
 
 interface ActionBody {
   action: string;
-  // userId travels from the client. Trusted in demo mode (no real auth).
-  // In production this must be replaced by reading the session from the auth
-  // cookie. Never trust a client-supplied identity in a real app.
-  userId: string;
+  // userId is NO LONGER trusted from the client. The server derives the actor
+  // identity from the authenticated session cookie. Any userId in the body is
+  // ignored for identity purposes.
+  userId?: string; // kept optional for backward compat; server ignores it
   payload?: Record<string, unknown>;
 }
 
@@ -44,7 +44,7 @@ function err(message: string, status = 400): Response {
 }
 
 // ---------------------------------------------------------------------------
-// Actor loader
+// Actor loader (always from DB, keyed by session uid)
 // ---------------------------------------------------------------------------
 
 async function loadActor(
@@ -65,7 +65,7 @@ async function loadActor(
 }
 
 // ---------------------------------------------------------------------------
-// User-scoped action handlers (actor acts on themselves)
+// User-scoped action handlers
 // ---------------------------------------------------------------------------
 
 async function handleToggleComplete(
@@ -73,10 +73,11 @@ async function handleToggleComplete(
   actor: ActorProfile,
   payload: Record<string, unknown>,
 ): Promise<Response> {
+  if (actor.status === "paused") return err("Account is paused", 403);
+
   const lessonId = payload.lessonId;
   if (typeof lessonId !== "string" || !lessonId) return err("lessonId is required");
 
-  // Check if the row already exists.
   const existing = await db
     .from("lesson_progress")
     .select("lesson_id")
@@ -87,7 +88,6 @@ async function handleToggleComplete(
   if (existing.error) throw existing.error;
 
   if (existing.data) {
-    // Already complete -- remove it (toggle off).
     const del = await db
       .from("lesson_progress")
       .delete()
@@ -95,7 +95,6 @@ async function handleToggleComplete(
       .eq("lesson_id", lessonId);
     if (del.error) throw del.error;
   } else {
-    // Not complete -- mark it (toggle on).
     const ins = await db
       .from("lesson_progress")
       .insert({ user_id: actor.id, lesson_id: lessonId });
@@ -110,17 +109,17 @@ async function handleMarkComplete(
   actor: ActorProfile,
   payload: Record<string, unknown>,
 ): Promise<Response> {
+  if (actor.status === "paused") return err("Account is paused", 403);
+
   const lessonId = payload.lessonId;
   if (typeof lessonId !== "string" || !lessonId) return err("lessonId is required");
 
-  // Idempotent insert -- do nothing on conflict.
   const ins = await db
     .from("lesson_progress")
     .insert({ user_id: actor.id, lesson_id: lessonId })
     .select()
     .maybeSingle();
 
-  // 23505 = unique_violation (already exists). Treat as success.
   if (ins.error && ins.error.code !== "23505") throw ins.error;
 
   return ok();
@@ -131,6 +130,8 @@ async function handleToggleHomework(
   actor: ActorProfile,
   payload: Record<string, unknown>,
 ): Promise<Response> {
+  if (actor.status === "paused") return err("Account is paused", 403);
+
   const lessonId = payload.lessonId;
   if (typeof lessonId !== "string" || !lessonId) return err("lessonId is required");
 
@@ -165,6 +166,8 @@ async function handleRecordVideoProgress(
   actor: ActorProfile,
   payload: Record<string, unknown>,
 ): Promise<Response> {
+  if (actor.status === "paused") return err("Account is paused", 403);
+
   const lessonId = payload.lessonId;
   if (typeof lessonId !== "string" || !lessonId) return err("lessonId is required");
 
@@ -181,7 +184,6 @@ async function handleRecordVideoProgress(
     return err("durationSec must be a non-negative number");
   }
 
-  // Fetch the current row to enforce the "only advance" invariant.
   const currentRes = await db
     .from("video_progress")
     .select("elapsed_sec")
@@ -194,8 +196,6 @@ async function handleRecordVideoProgress(
 
   const storedElapsed = currentRes.data ? Number(currentRes.data.elapsed_sec) : -1;
 
-  // Only write when the incoming value is strictly greater than what is stored.
-  // This preserves the "furthest point watched" semantic from AcademyProvider.
   if (elapsedSec > storedElapsed) {
     const upsertRes = await db.from("video_progress").upsert(
       {
@@ -360,11 +360,17 @@ async function handleRemoveUser(
     return err("targetUserId is required");
   }
 
-  // The profiles table has on delete cascade FKs from lesson_progress,
-  // homework, video_progress, module_access, posts, comments, post_likes,
-  // follows, and notifications. Deleting the profile cascades all of them.
-  const del = await db.from("profiles").delete().eq("id", targetUserId);
-  if (del.error) throw del.error;
+  if (targetUserId === actor.id) {
+    return err("You cannot remove your own account", 400);
+  }
+
+  // Delete the auth user. The profiles row (and all dependent data) is removed
+  // via ON DELETE CASCADE on the FK to auth.users, so a deleted user cannot
+  // sign back in and "resurrect" their profile.
+  const { error: deleteError } = await db.auth.admin.deleteUser(targetUserId);
+  if (deleteError) {
+    return err(`Failed to remove user: ${deleteError.message}`, 500);
+  }
 
   return ok();
 }
@@ -411,6 +417,22 @@ async function handleSetHomeworkDone(
 // ---------------------------------------------------------------------------
 
 export async function POST(request: Request): Promise<Response> {
+  // --- 1. Authenticate: derive actor from session cookie ---
+  let sessionClient: Awaited<ReturnType<typeof createServerSupabase>>;
+  try {
+    sessionClient = await createServerSupabase();
+  } catch {
+    return err("Auth service unavailable", 503);
+  }
+
+  const { data: { user }, error: authError } = await sessionClient.auth.getUser();
+  if (authError || !user) {
+    return err("Unauthorized", 401);
+  }
+
+  const sessionUserId = user.id;
+
+  // --- 2. Parse body ---
   let body: ActionBody;
   try {
     body = (await request.json()) as ActionBody;
@@ -418,16 +440,15 @@ export async function POST(request: Request): Promise<Response> {
     return err("Invalid JSON body");
   }
 
-  const { action, userId, payload = {} } = body;
-
+  const { action, payload = {} } = body;
   if (!action || typeof action !== "string") return err("action is required");
-  if (!userId || typeof userId !== "string") return err("userId is required");
 
+  // --- 3. Load actor profile from DB (authoritative source for role/status) ---
   const db = createAdminClient();
 
   let actor: ActorProfile | null;
   try {
-    actor = await loadActor(db, userId);
+    actor = await loadActor(db, sessionUserId);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load actor";
     return Response.json({ ok: false, error: msg }, { status: 500 });
@@ -435,9 +456,9 @@ export async function POST(request: Request): Promise<Response> {
 
   if (!actor) return err("User profile not found", 404);
 
+  // --- 4. Dispatch ---
   try {
     switch (action) {
-      // User-scoped actions
       case "toggleComplete":
         return await handleToggleComplete(db, actor, payload);
       case "markComplete":
@@ -446,8 +467,6 @@ export async function POST(request: Request): Promise<Response> {
         return await handleToggleHomework(db, actor, payload);
       case "recordVideoProgress":
         return await handleRecordVideoProgress(db, actor, payload);
-
-      // Admin-only actions
       case "setStatus":
         return await handleSetStatus(db, actor, payload);
       case "unlockModule":
@@ -462,7 +481,6 @@ export async function POST(request: Request): Promise<Response> {
         return await handleRemoveUser(db, actor, payload);
       case "setHomeworkDone":
         return await handleSetHomeworkDone(db, actor, payload);
-
       default:
         return err(`Unknown action: ${action}`, 400);
     }
