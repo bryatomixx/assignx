@@ -189,6 +189,7 @@ function MiniPlayer({
   onReturn,
   onPlayNow,
   onCancelCountdown,
+  posterUrl,
   reduced,
 }: {
   clipTitle: string;
@@ -205,6 +206,7 @@ function MiniPlayer({
   onReturn: () => void;
   onPlayNow: () => void;
   onCancelCountdown: () => void;
+  posterUrl?: string;
   reduced: boolean;
 }) {
   return (
@@ -223,6 +225,17 @@ function MiniPlayer({
       style={{ backgroundImage: accent }}
     >
       <div className="relative aspect-video bg-black/20">
+        {posterUrl && (
+          <>
+            <img
+              src={posterUrl}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/35" />
+          </>
+        )}
         <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-2 pt-1.5 pb-3 bg-gradient-to-b from-black/40 to-transparent">
           <button
             onClick={onReturn}
@@ -373,7 +386,7 @@ function PlayerUI({
         {isYouTube && youtubeHostRef && (
           <div
             ref={youtubeHostRef}
-            className="absolute inset-0 z-0 [&_iframe]:w-full [&_iframe]:h-full [&_iframe]:border-0"
+            className="absolute inset-0 z-0 [&_iframe]:!absolute [&_iframe]:!inset-0 [&_iframe]:!h-full [&_iframe]:!w-full [&_iframe]:border-0"
             aria-label="YouTube video player"
           />
         )}
@@ -520,6 +533,11 @@ function PlayerUI({
                   key="mini"
                   clipTitle={clip.title}
                   accent={module.accent}
+                  posterUrl={
+                    isYouTube && clip.videoId
+                      ? `https://i.ytimg.com/vi/${clip.videoId}/hqdefault.jpg`
+                      : undefined
+                  }
                   pct={pct}
                   isPlaying={isPlaying}
                   countdownActive={countdownActive}
