@@ -6,6 +6,7 @@ import { AlertTriangle, Clock, Shield, Trash2, Users2 } from "lucide-react";
 import { PostComposer } from "@/components/community/PostComposer";
 import { PostCard } from "@/components/community/PostCard";
 import { TopContributors } from "@/components/community/TopContributors";
+import { GamificationPanel } from "@/components/community/GamificationPanel";
 import { useBoard } from "@/lib/store/BoardProvider";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { cn } from "@/lib/utils";
@@ -37,8 +38,8 @@ export default function CommunityPage() {
   const showModLink = canApprovePosts() || canManageApproval();
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
-      {/* Page heading */}
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+      {/* Page heading (full width) */}
       <div className="mb-6 flex items-center gap-2">
         <Users2 className="h-6 w-6 text-brand-500" />
         <h1 className="text-2xl flex-1">Community</h1>
@@ -59,16 +60,21 @@ export default function CommunityPage() {
         )}
       </div>
 
-      {/* Top contributors leaderboard */}
-      <div className="mb-5">
-        <TopContributors />
-      </div>
+      {/* 3-column layout: left rail (gamification), center feed, right rail
+          (top contributors). On mobile everything stacks with the feed first. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)_300px] lg:items-start">
+        {/* Left rail: your progress + how to earn points */}
+        <aside className="order-2 lg:order-1 lg:sticky lg:top-6">
+          <GamificationPanel />
+        </aside>
 
-      {/* Post composer */}
-      <PostComposer />
+        {/* Center feed */}
+        <div className="order-1 min-w-0 lg:order-2">
+          {/* Post composer */}
+          <PostComposer />
 
-      {/* Banners */}
-      <div aria-live="polite" className="mt-4 flex flex-col gap-3">
+          {/* Banners */}
+          <div aria-live="polite" className="mt-4 flex flex-col gap-3">
         {/* Pending posts banner */}
         {pending.length > 0 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -179,6 +185,13 @@ export default function CommunityPage() {
           posts.map((post) => <PostCard key={post.id} post={post} />)
         )}
       </section>
+        </div>
+
+        {/* Right rail: top contributors */}
+        <aside className="order-3 lg:sticky lg:top-6">
+          <TopContributors />
+        </aside>
+      </div>
     </div>
   );
 }

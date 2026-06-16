@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { UserCheck, UserPlus } from "lucide-react";
+import { UserCheck, UserPlus, ArrowLeft } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { RoleBadge } from "@/components/community/RoleBadge";
 import { PostCard } from "@/components/community/PostCard";
@@ -89,6 +90,14 @@ export default function MemberProfilePage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+      <Link
+        href="/community"
+        className="mb-4 inline-flex items-center gap-1.5 rounded text-sm font-medium text-ink-500 transition-colors hover:text-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to community
+      </Link>
+
       {/* Profile header card */}
       <div className="card p-6">
         <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
