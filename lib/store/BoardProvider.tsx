@@ -131,12 +131,21 @@ interface BoardContextValue {
   likesGivenBy: (userId: string) => Like[];
   commentedPostIdsBy: (userId: string) => string[];
   likedPostsBy: (userId: string) => Post[];
+  /** All posts authored by userId (all statuses), newest first. Admin view. */
+  postsBy: (userId: string) => Post[];
+  /** userIds of accounts that follow userId. */
+  followersOf: (userId: string) => string[];
+  /** userIds that userId follows. */
+  followingOf: (userId: string) => string[];
 
   // Notifications
   notificationsFor: (userId?: string) => AppNotification[];
   unreadCount: (userId?: string) => number;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: (userId?: string) => void;
+
+  // Post lookup
+  getPost: (postId: string) => Post | undefined;
 
   // Cascade delete (purge all board data for a user)
   purgeUser: (userId: string) => void;
@@ -930,6 +939,29 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     [likes, posts],
   );
 
+  // All posts by a user regardless of status, newest first (admin view).
+  const postsBy = useCallback(
+    (userId: string): Post[] =>
+      [...posts.filter((p) => p.authorId === userId)].sort((a, b) =>
+        b.createdAt.localeCompare(a.createdAt),
+      ),
+    [posts],
+  );
+
+  // UserIds of accounts that follow userId.
+  const followersOf = useCallback(
+    (userId: string): string[] =>
+      follows.filter((f) => f.followeeId === userId).map((f) => f.followerId),
+    [follows],
+  );
+
+  // UserIds that userId follows.
+  const followingOf = useCallback(
+    (userId: string): string[] =>
+      follows.filter((f) => f.followerId === userId).map((f) => f.followeeId),
+    [follows],
+  );
+
   // ---- Notification getters ----
 
   const notificationsFor = useCallback(
@@ -973,6 +1005,13 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       });
     },
     [currentUserId],
+  );
+
+  // ---- Post lookup ----
+
+  const getPost = useCallback(
+    (postId: string): Post | undefined => posts.find((p) => p.id === postId),
+    [posts],
   );
 
   // ---- Cascade purge ----
@@ -1131,6 +1170,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       likesGivenBy,
       commentedPostIdsBy,
       likedPostsBy,
+      postsBy,
+      followersOf,
+      followingOf,
+      getPost,
       notificationsFor,
       unreadCount,
       markNotificationRead,
@@ -1190,6 +1233,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       likesGivenBy,
       commentedPostIdsBy,
       likedPostsBy,
+      postsBy,
+      followersOf,
+      followingOf,
+      getPost,
       notificationsFor,
       unreadCount,
       markNotificationRead,
