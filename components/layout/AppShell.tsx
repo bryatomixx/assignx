@@ -9,7 +9,8 @@ import { NotificationBell } from "@/components/community/NotificationBell";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 
 // Routes that do NOT require authentication.
-const PUBLIC_ROUTES = ["/login"];
+// "/" is the public marketing landing; "/login" is the auth screen.
+const PUBLIC_ROUTES = ["/", "/login"];
 
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "/"));
@@ -40,18 +41,23 @@ function TopBar() {
 function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { authLoading, currentUser } = useAcademy();
+  const { authLoading, ready, currentUser } = useAcademy();
 
   const isPublic = isPublicRoute(pathname);
+  // Auth is only "resolved" once the session check finished AND the academy
+  // state finished loading. currentUser is derived from the loaded profiles,
+  // so it is briefly undefined right after authLoading flips to false; treating
+  // that window as "logged out" would bounce a signed-in user to /login.
+  const resolving = authLoading || !ready;
 
   useEffect(() => {
-    if (!authLoading && !currentUser && !isPublic) {
+    if (!resolving && !currentUser && !isPublic) {
       router.push("/login");
     }
-  }, [authLoading, currentUser, isPublic, router]);
+  }, [resolving, currentUser, isPublic, router]);
 
-  // On protected routes: show spinner until auth is resolved.
-  if (!isPublic && authLoading) {
+  // On protected routes: show spinner until auth and state are resolved.
+  if (!isPublic && resolving) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-brand-300" />
@@ -60,7 +66,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   // On protected routes: hide content while redirect is pending (no flash).
-  if (!isPublic && !authLoading && !currentUser) {
+  if (!isPublic && !currentUser) {
     return null;
   }
 
