@@ -6,7 +6,8 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Loader2, CheckCircle2 } from "lucide-react";
+import Link from "next/link";
+import { Loader2, CheckCircle2, ArrowLeft } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/Button";
 import { useAcademy } from "@/lib/store/AcademyProvider";
@@ -389,6 +390,24 @@ function LoginInner() {
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-10">
       {/* Background blob */}
       <div className="pointer-events-none absolute left-1/2 top-0 h-[480px] w-[760px] -translate-x-1/2 rounded-full bg-gradient-to-b from-brand-100 via-brand-50 to-transparent blur-2xl" />
+
+      {/* Top-left nav: AssignX logo + back to homepage */}
+      <div className="absolute left-5 top-5 z-10 flex items-center gap-3 sm:left-8 sm:top-6">
+        <Link
+          href="/"
+          aria-label="Back to AssignX homepage"
+          className="rounded-lg transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+        >
+          <Logo />
+        </Link>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 rounded-lg text-sm font-medium text-ink-500 transition-colors hover:text-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span className="hidden sm:inline">Back to homepage</span>
+        </Link>
+      </div>
 
       <motion.div
         initial={{ opacity: 0, y: 16 }}
