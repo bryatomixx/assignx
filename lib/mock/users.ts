@@ -1,4 +1,34 @@
+/**
+ * lib/mock/users.ts
+ *
+ * Mock auth layer. The live user/progress/homework/video state now lives in
+ * Supabase and is fetched via lib/academy/api.ts. This file keeps only:
+ *   - USER_CODES: the static code -> UUID map for mock login.
+ *   - DEFAULT_USER_ID: the UUID used when localStorage has no session.
+ *   - SEED_* exports retained so lib/store/storage.ts continues to compile
+ *     (storage.ts is still used for community/board and session keys).
+ */
+
 import type { User, Progress, HomeworkRecord } from "@/lib/types";
+
+// ---------------------------------------------------------------------------
+// Mock login codes  (code -> UUID, matches the rows seeded in Supabase)
+// ---------------------------------------------------------------------------
+
+export const USER_CODES: Record<string, string> = {
+  "9999": "11111111-1111-1111-1111-111111111111", // Noah Nega (admin)
+  "1234": "22222222-2222-2222-2222-222222222222", // Test Member (student)
+};
+
+export const DEFAULT_USER_ID = "22222222-2222-2222-2222-222222222222";
+
+// ---------------------------------------------------------------------------
+// Legacy seed data -- kept only so lib/store/storage.ts can import them
+// without a compile error. AcademyProvider no longer uses these; the real
+// state comes from the DB. Storage.ts still uses them as LocalStorage
+// fallbacks for the loadUsers/loadProgress/loadHomework functions, which are
+// no longer called by AcademyProvider but remain exported for backward compat.
+// ---------------------------------------------------------------------------
 
 export const SEED_USERS: User[] = [
   {
@@ -55,7 +85,6 @@ export const SEED_USERS: User[] = [
   },
 ];
 
-/** Seed progress so the admin view shows real data on first load. */
 export const SEED_PROGRESS: Progress[] = [
   { userId: "11111111-1111-1111-1111-111111111111", completedLessonIds: [] },
   { userId: "22222222-2222-2222-2222-222222222222", completedLessonIds: [] },
@@ -82,7 +111,6 @@ export const SEED_PROGRESS: Progress[] = [
   },
 ];
 
-/** Seed homework so the admin can see done vs pending. */
 export const SEED_HOMEWORK: HomeworkRecord[] = [
   { userId: "33333333-3333-3333-3333-333333333333", doneLessonIds: ["orientation", "w1d1"] },
   {
@@ -90,5 +118,3 @@ export const SEED_HOMEWORK: HomeworkRecord[] = [
     doneLessonIds: ["orientation", "w1d1", "w1d2", "w2d1", "w2d2"],
   },
 ];
-
-export const DEFAULT_USER_ID = "22222222-2222-2222-2222-222222222222";

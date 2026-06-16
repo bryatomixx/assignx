@@ -168,7 +168,14 @@ export function saveNotifications(notifications: AppNotification[]): void {
   write(KEYS.notifications, notifications);
 }
 
+/**
+ * Clears the local session so the user is returned to the login screen.
+ * Academy progress, homework, video progress, and community data all live in
+ * Supabase and are NOT cleared here. Only the current-user session key is
+ * removed because that is the only persistent state that still lives in
+ * localStorage for the academy flow.
+ */
 export function resetDemo(): void {
   if (typeof window === "undefined") return;
-  Object.values(KEYS).forEach((k) => window.localStorage.removeItem(k));
+  window.localStorage.removeItem(KEYS.currentUser);
 }

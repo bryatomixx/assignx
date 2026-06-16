@@ -12,21 +12,35 @@ import type { Module, ModuleProgress, Status, User, VideoProgress } from "@/lib/
 import { MODULES, TOTAL_LESSONS } from "@/lib/mock/modules";
 import {
   loadCurrentUserId,
-  loadHomework,
-  loadProgress,
-  loadUsers,
-  loadVideoProgress,
-  resetDemo as clearStorage,
   saveCurrentUserId,
-  saveHomework,
-  saveProgress,
-  saveUsers,
-  saveVideoProgress,
+  resetDemo as clearStorage,
 } from "@/lib/store/storage";
+import {
+  fetchAcademyState,
+  toggleComplete as apiToggleComplete,
+  markComplete as apiMarkComplete,
+  toggleHomework as apiToggleHomework,
+  setHomeworkDone as apiSetHomeworkDone,
+  recordVideoProgress as apiRecordVideoProgress,
+  setStatus as apiSetStatus,
+  unlockModule as apiUnlockModule,
+  lockModule as apiLockModule,
+  unlockAll as apiUnlockAll,
+  lockAll as apiLockAll,
+  removeUser as apiRemoveUser,
+} from "@/lib/academy/api";
+import { USER_CODES } from "@/lib/mock/users";
 
-const PAID_MODULE_IDS = MODULES.filter((m) => m.access === "paid").map(
-  (m) => m.id,
-);
+// ---------------------------------------------------------------------------
+// Derived user builder
+// ---------------------------------------------------------------------------
+
+// Placeholder joinedAt for profiles that do not carry the field from the DB.
+const PLACEHOLDER_JOINED = "2026-01-01";
+
+// ---------------------------------------------------------------------------
+// Context interface (unchanged from the localStorage version)
+// ---------------------------------------------------------------------------
 
 interface AcademyContextValue {
   ready: boolean;
@@ -71,6 +85,10 @@ interface AcademyContextValue {
 
 const AcademyContext = createContext<AcademyContextValue | null>(null);
 
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
+
 export function AcademyProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
@@ -80,41 +98,87 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
   // Keyed by "${userId}:${lessonId}:${clipIndex}"
   const [videoProgressMap, setVideoProgressMap] = useState<Record<string, VideoProgress>>({});
 
-  // Hydrate from localStorage on mount (client only).
-  useEffect(() => {
-    setUsers(loadUsers());
-    const pm: Record<string, string[]> = {};
-    for (const row of loadProgress()) pm[row.userId] = row.completedLessonIds;
-    setProgressMap(pm);
-    const hw: Record<string, string[]> = {};
-    for (const row of loadHomework()) hw[row.userId] = row.doneLessonIds;
-    setHomeworkMap(hw);
-    const vpm: Record<string, VideoProgress> = {};
-    for (const row of loadVideoProgress()) {
-      vpm[`${row.userId}:${row.lessonId}:${row.clipIndex}`] = row;
+  // ---- Reverse map: code -> userId UUID (built from USER_CODES constant) ----
+  // USER_CODES is Record<code, uuid> defined in lib/mock/users.ts
+  // The reverse is used by loginWithCode to find the user object after the
+  // users list is populated from the DB.
+
+  // ---- Remote state loader ----
+
+  const loadState = useCallback(async () => {
+    try {
+      const state = await fetchAcademyState();
+
+      // Build the users list from profiles + moduleAccess
+      const builtUsers: User[] = state.profiles.map((profile) => {
+        // Derive unlocked module ids from the moduleAccess rows
+        const unlockedModuleIds = state.moduleAccess
+          .filter((ma) => ma.userId === profile.id)
+          .map((ma) => ma.moduleId);
+
+        // Find the code for this user from the mock code map (code -> uuid)
+        const code =
+          Object.entries(USER_CODES).find(([, uid]) => uid === profile.id)?.[0] ??
+          undefined;
+
+        return {
+          id: profile.id,
+          name: profile.name,
+          email: profile.email,
+          role: profile.role,
+          status: profile.status,
+          avatar: profile.avatar,
+          unlockedModuleIds,
+          joinedAt: PLACEHOLDER_JOINED,
+          code,
+        } satisfies User;
+      });
+
+      setUsers(builtUsers);
+
+      // Build progress map: userId -> completedLessonIds[]
+      const pm: Record<string, string[]> = {};
+      for (const row of state.progress) {
+        if (!pm[row.userId]) pm[row.userId] = [];
+        pm[row.userId].push(row.lessonId);
+      }
+      setProgressMap(pm);
+
+      // Build homework map: userId -> doneLessonIds[]
+      const hw: Record<string, string[]> = {};
+      for (const row of state.homework) {
+        if (!hw[row.userId]) hw[row.userId] = [];
+        hw[row.userId].push(row.lessonId);
+      }
+      setHomeworkMap(hw);
+
+      // Build video progress map: key -> VideoProgress
+      const vpm: Record<string, VideoProgress> = {};
+      for (const row of state.videoProgress) {
+        vpm[`${row.userId}:${row.lessonId}:${row.clipIndex}`] = {
+          userId: row.userId,
+          lessonId: row.lessonId,
+          clipIndex: row.clipIndex,
+          elapsedSec: row.elapsedSec,
+          durationSec: row.durationSec,
+        };
+      }
+      setVideoProgressMap(vpm);
+    } catch {
+      // Keep whatever state is already in memory so the UI does not go blank.
+    } finally {
+      setReady(true);
     }
-    setVideoProgressMap(vpm);
+  }, []);
+
+  // Hydrate from the server API on mount. Session (currentUserId) still comes
+  // from localStorage (mock auth, unchanged).
+  useEffect(() => {
     setCurrentUserId(loadCurrentUserId());
-    setReady(true);
-  }, []);
+    void loadState();
+  }, [loadState]);
 
-  const persistProgress = useCallback((map: Record<string, string[]>) => {
-    saveProgress(
-      Object.entries(map).map(([userId, completedLessonIds]) => ({
-        userId,
-        completedLessonIds,
-      })),
-    );
-  }, []);
-
-  const persistHomework = useCallback((map: Record<string, string[]>) => {
-    saveHomework(
-      Object.entries(map).map(([userId, doneLessonIds]) => ({
-        userId,
-        doneLessonIds,
-      })),
-    );
-  }, []);
+  // ---- Identity (mock auth, localStorage only) ----
 
   const setCurrentUser = useCallback((id: string) => {
     setCurrentUserId(id);
@@ -123,7 +187,19 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithCode = useCallback(
     (code: string): User | null => {
-      const match = users.find((u) => u.code && u.code === code.trim());
+      const trimmed = code.trim();
+      // Try USER_CODES map first (code -> UUID)
+      const uuidFromMap = USER_CODES[trimmed];
+      if (uuidFromMap) {
+        const match = users.find((u) => u.id === uuidFromMap);
+        if (match) {
+          setCurrentUser(match.id);
+          return match;
+        }
+      }
+      // Fallback: scan users list (handles codes that are in DB but not in the
+      // static map -- rare, but keeps the UI from breaking).
+      const match = users.find((u) => u.code === trimmed);
       if (match) {
         setCurrentUser(match.id);
         return match;
@@ -133,7 +209,8 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
     [users, setCurrentUser],
   );
 
-  // ---- progress ----
+  // ---- Progress getters ----
+
   const completedFor = useCallback(
     (userId: string) => progressMap[userId] ?? [],
     [progressMap],
@@ -142,36 +219,6 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
   const isComplete = useCallback(
     (lessonId: string) => (progressMap[currentUserId] ?? []).includes(lessonId),
     [progressMap, currentUserId],
-  );
-
-  const toggleComplete = useCallback(
-    (lessonId: string) => {
-      setProgressMap((prev) => {
-        const cur = prev[currentUserId] ?? [];
-        const next = cur.includes(lessonId)
-          ? cur.filter((id) => id !== lessonId)
-          : [...cur, lessonId];
-        const updated = { ...prev, [currentUserId]: next };
-        persistProgress(updated);
-        return updated;
-      });
-    },
-    [currentUserId, persistProgress],
-  );
-
-  // Idempotent: ensure a lesson is in the completed list (used by auto-complete
-  // when all of a lesson's clips have been watched). Never un-completes.
-  const markComplete = useCallback(
-    (lessonId: string) => {
-      setProgressMap((prev) => {
-        const cur = prev[currentUserId] ?? [];
-        if (cur.includes(lessonId)) return prev; // already complete -> no change
-        const updated = { ...prev, [currentUserId]: [...cur, lessonId] };
-        persistProgress(updated);
-        return updated;
-      });
-    },
-    [currentUserId, persistProgress],
   );
 
   const moduleProgress = useCallback(
@@ -201,38 +248,54 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
     [currentUserId, completedFor],
   );
 
-  // ---- homework ----
+  // ---- Progress mutations (API + refetch) ----
+
+  const toggleComplete = useCallback(
+    (lessonId: string) => {
+      if (!currentUserId) return;
+      void apiToggleComplete(currentUserId, lessonId).then(() => loadState());
+    },
+    [currentUserId, loadState],
+  );
+
+  const markComplete = useCallback(
+    (lessonId: string) => {
+      if (!currentUserId) return;
+      void apiMarkComplete(currentUserId, lessonId).then(() => loadState());
+    },
+    [currentUserId, loadState],
+  );
+
+  // ---- Homework getters ----
+
   const isHomeworkDone = useCallback(
     (lessonId: string, userId?: string) =>
       (homeworkMap[userId ?? currentUserId] ?? []).includes(lessonId),
     [homeworkMap, currentUserId],
   );
 
-  const setHomeworkDone = useCallback(
-    (userId: string, lessonId: string, done: boolean) => {
-      setHomeworkMap((prev) => {
-        const cur = prev[userId] ?? [];
-        const next = done
-          ? cur.includes(lessonId)
-            ? cur
-            : [...cur, lessonId]
-          : cur.filter((id) => id !== lessonId);
-        const updated = { ...prev, [userId]: next };
-        persistHomework(updated);
-        return updated;
-      });
-    },
-    [persistHomework],
-  );
+  // ---- Homework mutations (API + refetch) ----
 
   const toggleHomework = useCallback(
     (lessonId: string) => {
-      setHomeworkDone(currentUserId, lessonId, !isHomeworkDone(lessonId));
+      if (!currentUserId) return;
+      void apiToggleHomework(currentUserId, lessonId).then(() => loadState());
     },
-    [currentUserId, isHomeworkDone, setHomeworkDone],
+    [currentUserId, loadState],
   );
 
-  // ---- access ----
+  const setHomeworkDone = useCallback(
+    (userId: string, lessonId: string, done: boolean) => {
+      if (!currentUserId) return;
+      void apiSetHomeworkDone(currentUserId, userId, lessonId, done).then(() =>
+        loadState(),
+      );
+    },
+    [currentUserId, loadState],
+  );
+
+  // ---- Access getters ----
+
   const canAccess = useCallback(
     (module: Module, userId?: string): boolean => {
       if (module.access === "free") return true;
@@ -250,68 +313,65 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
     [users, currentUserId],
   );
 
-  // ---- admin user mutations ----
-  const updateUser = useCallback(
-    (userId: string, patch: (u: User) => User) => {
-      setUsers((prev) => {
-        const next = prev.map((u) => (u.id === userId ? patch(u) : u));
-        saveUsers(next);
-        return next;
-      });
-    },
-    [],
-  );
+  // ---- Admin mutations (API + refetch) ----
 
   const unlockModule = useCallback(
-    (userId: string, moduleId: string) =>
-      updateUser(userId, (u) => ({
-        ...u,
-        unlockedModuleIds: u.unlockedModuleIds.includes(moduleId)
-          ? u.unlockedModuleIds
-          : [...u.unlockedModuleIds, moduleId],
-      })),
-    [updateUser],
+    (userId: string, moduleId: string) => {
+      if (!currentUserId) return;
+      void apiUnlockModule(currentUserId, userId, moduleId).then(() =>
+        loadState(),
+      );
+    },
+    [currentUserId, loadState],
   );
 
   const lockModule = useCallback(
-    (userId: string, moduleId: string) =>
-      updateUser(userId, (u) => ({
-        ...u,
-        unlockedModuleIds: u.unlockedModuleIds.filter((id) => id !== moduleId),
-      })),
-    [updateUser],
+    (userId: string, moduleId: string) => {
+      if (!currentUserId) return;
+      void apiLockModule(currentUserId, userId, moduleId).then(() =>
+        loadState(),
+      );
+    },
+    [currentUserId, loadState],
   );
 
   const unlockAll = useCallback(
-    (userId: string) =>
-      updateUser(userId, (u) => ({ ...u, unlockedModuleIds: [...PAID_MODULE_IDS] })),
-    [updateUser],
+    (userId: string) => {
+      if (!currentUserId) return;
+      void apiUnlockAll(currentUserId, userId).then(() => loadState());
+    },
+    [currentUserId, loadState],
   );
 
   const lockAll = useCallback(
-    (userId: string) =>
-      updateUser(userId, (u) => ({ ...u, unlockedModuleIds: [] })),
-    [updateUser],
+    (userId: string) => {
+      if (!currentUserId) return;
+      void apiLockAll(currentUserId, userId).then(() => loadState());
+    },
+    [currentUserId, loadState],
   );
 
   const setStatus = useCallback(
-    (userId: string, status: Status) =>
-      updateUser(userId, (u) => ({ ...u, status })),
-    [updateUser],
+    (userId: string, status: Status) => {
+      if (!currentUserId) return;
+      void apiSetStatus(currentUserId, userId, status).then(() => loadState());
+    },
+    [currentUserId, loadState],
   );
 
   const removeUser = useCallback(
     (userId: string) => {
-      setUsers((prev) => {
-        const next = prev.filter((u) => u.id !== userId);
-        saveUsers(next);
-        return next;
-      });
+      if (!currentUserId) return;
+      void apiRemoveUser(currentUserId, userId).then(() => loadState());
     },
-    [],
+    [currentUserId, loadState],
   );
 
-  // ---- video progress ----
+  // ---- Video progress ----
+  // recordVideoProgress is called every second during playback. To avoid
+  // chatty network traffic and state flicker:
+  //   1. Update the local videoProgressMap optimistically (only if elapsed advances).
+  //   2. Persist to the API in fire-and-forget (no await, no refetch).
 
   const recordVideoProgress = useCallback(
     (
@@ -324,7 +384,7 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
       const key = `${currentUserId}:${lessonId}:${clipIndex}`;
       setVideoProgressMap((prev) => {
         const existing = prev[key];
-        // Only advance; never let elapsed go backwards
+        // Only advance; never let elapsed go backwards.
         if (existing && existing.elapsedSec >= elapsedSec) return prev;
         const entry: VideoProgress = {
           userId: currentUserId,
@@ -333,10 +393,16 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
           elapsedSec,
           durationSec,
         };
-        const next = { ...prev, [key]: entry };
-        saveVideoProgress(Object.values(next));
-        return next;
+        return { ...prev, [key]: entry };
       });
+      // Fire-and-forget: persist the new maximum without blocking or refetching.
+      void apiRecordVideoProgress(
+        currentUserId,
+        lessonId,
+        clipIndex,
+        elapsedSec,
+        durationSec,
+      );
     },
     [currentUserId],
   );
@@ -349,15 +415,21 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
     [videoProgressMap],
   );
 
+  // ---- currentUser derived from users + currentUserId ----
+
   const currentUser = useMemo<User | undefined>(
     () => users.find((u) => u.id === currentUserId) ?? users[0],
     [users, currentUserId],
   );
 
+  // ---- Demo reset: only clears local session; DB state is untouched ----
+
   const resetDemo = useCallback(() => {
     clearStorage();
     window.location.reload();
   }, []);
+
+  // ---- Context value ----
 
   const value = useMemo<AcademyContextValue>(
     () => ({
