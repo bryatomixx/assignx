@@ -542,7 +542,7 @@ function PlayerSurface({
           onClick={onToggle}
           aria-label={isPlaying ? "Pause" : "Play"}
           className={cn(
-            "relative z-10 flex items-center justify-center rounded-full bg-white/20 backdrop-blur transition-transform hover:scale-105 active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white",
+            "absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/20 backdrop-blur transition-transform hover:scale-105 active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white",
             isFloating ? "h-12 w-12" : "h-16 w-16",
           )}
         >
@@ -1072,7 +1072,24 @@ function YouTubeClipPlayer({
   const router = useRouter();
 
   const youtubeHostRef = useRef<HTMLDivElement>(null);
-  const player = useYouTubePlayer(youtubeHostRef, clip.videoId!);
+
+  // Floating player state. Declared BEFORE the YT player hook so player
+  // creation can be gated on the surface (and its host div) being mounted.
+  const {
+    portalMounted,
+    placeholderRef,
+    isVisible,
+    isFloating,
+    surfaceStyle,
+    handleClose,
+    handleReturn,
+  } = useFloatingPlayer();
+
+  const player = useYouTubePlayer(
+    youtubeHostRef,
+    clip.videoId!,
+    portalMounted && isVisible,
+  );
   const { state, elapsed, durationSec, countdownSec, togglePlay, cancelCountdown, seekTo, volume, muted, setVolume, toggleMute } = player;
 
   const hasNextClip = currentClipIndex < clips.length - 1;
@@ -1170,17 +1187,6 @@ function YouTubeClipPlayer({
   }, [player, hasNextClip, currentClipIndex, onClipWatched, onClipChange, navigateToNext]);
 
   const handleCancel = useCallback(() => { cancelCountdown(); }, [cancelCountdown]);
-
-  // ---- Floating player state ----
-  const {
-    portalMounted,
-    placeholderRef,
-    isVisible,
-    isFloating,
-    surfaceStyle,
-    handleClose,
-    handleReturn,
-  } = useFloatingPlayer();
 
   const showModuleEnd = state === "ended" && !hasNextClip && !next;
   const showLessonCancelledEnd = state === "ended" && !hasNextClip && !!next;

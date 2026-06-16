@@ -38,6 +38,12 @@ const COUNTDOWN_WINDOW = 5;
 export function useYouTubePlayer(
   containerRef: React.RefObject<HTMLDivElement | null>,
   videoId: string,
+  // Gates player creation until the host element is actually mounted (it lives
+  // inside a portal that mounts after the first render). When this flips true,
+  // the creation effect re-runs and the YT.Player is built against a real DOM
+  // node, so the video loads. Defaults to true for callers that mount the host
+  // synchronously.
+  enabled: boolean = true,
 ): SimulatedPlayerAPI {
   const [state, setState] = useState<PlayerState>("idle");
   const [elapsed, setElapsed] = useState(0);
@@ -245,6 +251,7 @@ export function useYouTubePlayer(
 
   // ---- Build the YT.Player when containerRef or videoId changes ----
   useEffect(() => {
+    if (!enabled) return;
     const container = containerRef.current;
     if (!container) return;
     if (!videoId) return;
@@ -388,9 +395,10 @@ export function useYouTubePlayer(
         playerRef.current = null;
       }
     };
-  // containerRef is a stable ref object -- only videoId changes cause re-runs.
+  // containerRef is a stable ref object. Re-run when videoId changes or when
+  // the host becomes available (enabled flips true after the portal mounts).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoId]);
+  }, [videoId, enabled]);
 
   return {
     state,
