@@ -12,8 +12,6 @@ import {
   ExternalLink,
   Image as ImageIcon,
   Video,
-  Share2,
-  Check,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { RoleBadge } from "@/components/community/RoleBadge";
@@ -51,7 +49,6 @@ export function PostCard({ post }: PostCardProps) {
   const [showComments, setShowComments] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   const author = users.find((u) => u.id === post.authorId);
   const role = roleOf(post.authorId);
@@ -95,19 +92,6 @@ export function PostCard({ post }: PostCardProps) {
     deletePost(post.id);
     setConfirmDelete(false);
     setMenuOpen(false);
-  }
-
-  function handleShare() {
-    const text = `${post.body}\n\n${author?.name ? `Shared by ${author.name} on AssignX Academy` : "AssignX Academy"}`;
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard
-        .writeText(text)
-        .then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        })
-        .catch(() => {});
-    }
   }
 
   return (
@@ -345,25 +329,6 @@ export function PostCard({ post }: PostCardProps) {
         >
           <MessageCircle className="h-4 w-4" />
           Comment
-        </button>
-
-        {/* Share (copies the post to the clipboard) */}
-        <button
-          onClick={handleShare}
-          aria-label="Copy post to clipboard"
-          className={cn(
-            "min-h-[44px] flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300",
-            copied
-              ? "text-success"
-              : "text-ink-500 hover:bg-surface-2 hover:text-ink-900",
-          )}
-        >
-          {copied ? (
-            <Check className="h-4 w-4" />
-          ) : (
-            <Share2 className="h-4 w-4" />
-          )}
-          {copied ? "Copied" : "Share"}
         </button>
       </div>
 
