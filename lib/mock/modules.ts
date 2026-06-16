@@ -617,22 +617,46 @@ export function getCoverSection(lesson: Lesson): LessonSection | undefined {
 }
 
 /**
+ * Demo YouTube video IDs for the Orientation lesson clips.
+ * These are stable, public, neutral YouTube videos used for development.
+ * TODO: replace with real lesson videos once lesson_clips.video_url is seeded.
+ *
+ * Index 0 -> "Intro to agency" clip
+ * Index 1 -> "Stripe setup" clip
+ * All other orientation clips and all other lessons use the simulated player.
+ */
+const ORIENTATION_DEMO_VIDEO_IDS: Record<number, string> = {
+  0: "dQw4w9WgXcQ", // TODO: random public test video, replace with the real lesson video
+  1: "aqz-KE-bpKQ", // TODO: random public test video (Big Buck Bunny), replace with real video
+};
+
+/**
  * Derives the playlist of clips for a lesson from the top-level bullets
  * of its cover section. Duration varies slightly per index so demo clips
  * feel distinct (10-14s range, always >= 8s so the 5s countdown is visible).
  * Falls back to a single 20s clip when there is no cover section.
+ *
+ * For the Orientation lesson, the first two clips include a demo videoId so
+ * the real YouTube player is exercised. The rest use the simulated player.
  */
 export function getLessonClips(lesson: Lesson): Clip[] {
   const cover = getCoverSection(lesson);
   if (!cover || cover.bullets.length === 0) {
     return [{ id: `${lesson.id}-c0`, title: lesson.title, durationSec: 20 }];
   }
-  return cover.bullets.map((bullet, i) => ({
-    id: `${lesson.id}-c${i}`,
-    title: bullet.text,
-    // Stagger duration: 10, 12, 11, 13, 10, 12, ... (never < 8)
-    durationSec: 10 + ((i * 2) % 5),
-  }));
+  return cover.bullets.map((bullet, i) => {
+    const base = {
+      id: `${lesson.id}-c${i}`,
+      title: bullet.text,
+      // Stagger duration: 10, 12, 11, 13, 10, 12, ... (never < 8)
+      durationSec: 10 + ((i * 2) % 5),
+    };
+    // Attach demo videoIds only on the Orientation lesson
+    if (lesson.id === "orientation" && ORIENTATION_DEMO_VIDEO_IDS[i]) {
+      return { ...base, videoId: ORIENTATION_DEMO_VIDEO_IDS[i] };
+    }
+    return base;
+  });
 }
 
 /** Whether a lesson includes a Homework section. */

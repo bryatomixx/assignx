@@ -14,6 +14,7 @@ import { Maximize2, Pause, Play, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { useSimulatedPlayer } from "@/lib/hooks/useSimulatedPlayer";
+import { useYouTubePlayer } from "@/lib/hooks/useYouTubePlayer";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import type { Clip, Lesson, Module } from "@/lib/types";
 
@@ -21,88 +22,43 @@ import type { Clip, Lesson, Module } from "@/lib/types";
 const AUTOPLAY_KEY = "assignx:autoplay";
 
 /**
- * LessonPlayer is now a CONTROLLED component.
+ * LessonPlayer is a CONTROLLED component.
  *
- * The parent (LessonContent) owns currentClipIndex and watchedIndices.
- * LessonPlayer receives the active index, calls onClipChange to advance it,
- * and calls onClipWatched when a clip finishes.
+ * For each clip there are two possible sub-components:
+ *   - SimulatedClipPlayer: uses useSimulatedPlayer (placeholder gradient)
+ *   - YouTubeClipPlayer:   uses useYouTubePlayer (real IFrame API)
  *
- * No state is pushed upward via useEffect. The only parent callbacks are
- * called from event handlers or from the single autoadvance effect (which
- * depends on a real state transition, not on every render). This eliminates
- * the render loop.
+ * Both sub-components receive all the props they need to render the full UI
+ * (overlays, mini-player, progress bar). This avoids conditional hook calls
+ * because each sub-component always calls exactly one hook. React re-mounts
+ * the sub-component when currentClipIndex changes (via the "key" prop on the
+ * sub-component), giving each clip a fresh hook instance.
+ *
+ * MINI-PLAYER (PiP) WITH YOUTUBE:
+ *   The mini-player renders via portal (createPortal to document.body) and
+ *   shows the module gradient + controls. We do NOT reparent the YouTube
+ *   iframe -- doing so destroys and recreates it (iframe reload). Instead the
+ *   iframe stays in the inline player container (even when it scrolls off
+ *   screen); the mini-player gradient surface shows playback controls that
+ *   call play/pause on the hidden iframe. This is the preferred strategy.
+ *
+ * AUTOPLAY ON AUTO-ADVANCE:
+ *   The initial play is always a user gesture, granting browser autoplay
+ *   permission for that session. On clip auto-advance the new sub-component
+ *   mounts and play() is called after reset(). If the browser blocks it
+ *   (audio policy), YT.onStateChange fires PAUSED and state stays "paused",
+ *   showing the play button. No forced mute is applied; if you want guaranteed
+ *   silent autoplay, set playerVars.mute=1 in useYouTubePlayer.
  */
 export interface LessonPlayerProps {
   lesson: Lesson;
   module: Module;
   next: Lesson | null;
   moduleSlug: string;
-  /** Derived clips array (stable reference from parent). */
   clips: Clip[];
-  /** Index of the clip currently active (controlled). */
   currentClipIndex: number;
-  /** Parent callback: switch to clip at index i. */
   onClipChange: (i: number) => void;
-  /** Parent callback: mark clip at index i as watched. */
   onClipWatched: (i: number) => void;
-}
-
-// ---- Inline player visuals ----
-function PlayerVisuals({
-  accent,
-  pct,
-  isPlaying,
-  onToggle,
-  compact = false,
-}: {
-  accent: string;
-  pct: number;
-  isPlaying: boolean;
-  onToggle: () => void;
-  compact?: boolean;
-}) {
-  return (
-    <>
-      <div
-        className="absolute inset-0 opacity-95"
-        style={{ backgroundImage: accent }}
-      />
-      <div className="absolute inset-0 bg-black/20" />
-
-      <button
-        onClick={onToggle}
-        aria-label={isPlaying ? "Pause" : "Play"}
-        className={cn(
-          "relative flex items-center justify-center rounded-full bg-white/20 backdrop-blur transition-transform hover:scale-105 active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white",
-          compact ? "h-11 w-11" : "h-16 w-16",
-        )}
-      >
-        {isPlaying ? (
-          <Pause
-            className={cn(compact ? "h-5 w-5" : "h-7 w-7")}
-            fill="white"
-            stroke="white"
-          />
-        ) : (
-          <Play
-            className={cn(
-              compact ? "h-5 w-5 translate-x-0.5" : "h-7 w-7 translate-x-0.5",
-            )}
-            fill="white"
-            stroke="none"
-          />
-        )}
-      </button>
-
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
-        <motion.div
-          className="h-full bg-white/80"
-          animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.2, ease: "linear" }}
-        />
-      </div>
-    </>
-  );
 }
 
 // ---- Countdown ring ----
@@ -266,9 +222,7 @@ function MiniPlayer({
       )}
       style={{ backgroundImage: accent }}
     >
-      {/* 16:9 surface so the mini matches the main player proportion; controls overlay it */}
       <div className="relative aspect-video bg-black/20">
-        {/* Top controls overlay (scrim for legibility) */}
         <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-2 pt-1.5 pb-3 bg-gradient-to-b from-black/40 to-transparent">
           <button
             onClick={onReturn}
@@ -287,7 +241,6 @@ function MiniPlayer({
           </button>
         </div>
 
-        {/* Center: play/pause or countdown, vertically and horizontally centered */}
         <div className="absolute inset-0 flex items-center justify-center px-4">
           {countdownActive && nextTitle ? (
             <div className="flex items-center gap-3">
@@ -329,7 +282,6 @@ function MiniPlayer({
           )}
         </div>
 
-        {/* Progress bar pinned to the bottom edge */}
         <div className="absolute inset-x-0 bottom-0 h-1 bg-white/20">
           <motion.div
             className="h-full bg-white/80"
@@ -342,241 +294,113 @@ function MiniPlayer({
   );
 }
 
-// ---- Main LessonPlayer (controlled) ----
-export function LessonPlayer({
-  lesson,
-  module,
-  next,
-  moduleSlug,
+// ---- Shared player UI used by both SimulatedClipPlayer and YouTubeClipPlayer ----
+// Receives all state/callbacks from the outer shell, which owns the
+// progress-tracking, autoadvance, and mini-player logic.
+function PlayerUI({
+  clip,
   clips,
   currentClipIndex,
-  onClipChange,
-  onClipWatched,
-}: LessonPlayerProps) {
-  const router = useRouter();
-  const reduced = useReducedMotion() ?? false;
-  const svgId = useId().replace(/:/g, "");
-
-  const clip = clips[currentClipIndex] ?? clips[0];
-  const hasNextClip = currentClipIndex < clips.length - 1;
-  const nextClip = hasNextClip ? clips[currentClipIndex + 1] : null;
-
-  // "Up next" title: next clip in lesson, or the next lesson title
-  const upNextTitle = nextClip ? nextClip.title : next?.title ?? null;
-
-  const player = useSimulatedPlayer(clip.durationSec);
-  const { state, elapsed, durationSec, countdownSec, togglePlay, cancelCountdown, reset } =
-    player;
-
-  // ---- Video progress tracking ----
-  // Records the furthest second watched per clip. Uses a ref to avoid re-renders.
-  // recordVideoProgress already stores the maximum (never goes backward), so
-  // calling it frequently is safe -- we throttle to integer-second boundaries.
-  const { recordVideoProgress } = useAcademy();
-  const lastRecordedSecRef = useRef(-1);
-
-  // Reset the tracking ref when the clip changes (currentClipIndex changes).
-  // We rely on the fact that the player's prevClipIndexRef already guards against
-  // spurious triggers; here we just reset our own throttle counter.
-  useEffect(() => {
-    lastRecordedSecRef.current = -1;
-  }, [currentClipIndex]);
-
-  // Record on each elapsed tick, throttled to whole-second advances.
-  // Only records while actively playing (playing or countdown); also records on
-  // pause and on unmount via the cleanup function.
-  useEffect(() => {
-    const intElapsed = Math.floor(elapsed);
-    if (intElapsed > lastRecordedSecRef.current && elapsed > 0) {
-      lastRecordedSecRef.current = intElapsed;
-      recordVideoProgress(lesson.id, currentClipIndex, elapsed, clip.durationSec);
-    }
-  }, [elapsed, lesson.id, currentClipIndex, clip.durationSec, recordVideoProgress]);
-
-  // Also flush on pause and on unmount to capture the last position.
-  useEffect(() => {
-    const isPaused = state === "paused";
-    if (isPaused && elapsed > 0) {
-      recordVideoProgress(lesson.id, currentClipIndex, elapsed, clip.durationSec);
-    }
-  }, [state, elapsed, lesson.id, currentClipIndex, clip.durationSec, recordVideoProgress]);
-
-  // Flush on unmount (component destroyed = lesson navigation or page leave).
-  // Keep a ref with the latest values, updated in an effect (never written during
-  // render) so the unmount cleanup can read the final position.
-  const flushRef = useRef({ lesson, currentClipIndex, clip, elapsed, recordVideoProgress });
-  useEffect(() => {
-    flushRef.current = { lesson, currentClipIndex, clip, elapsed, recordVideoProgress };
-  });
-  useEffect(() => {
-    return () => {
-      const { lesson: l, currentClipIndex: ci, clip: c, elapsed: e, recordVideoProgress: rec } =
-        flushRef.current;
-      if (e > 0) rec(l.id, ci, e, c.durationSec);
-    };
-  }, []);
-
-  const pct = Math.min((elapsed / durationSec) * 100, 100);
-  const isPlaying = state === "playing" || state === "countdown";
-  const countdownActive = state === "countdown";
-  const countdownTotal = 5; // ring covers 5 second window
-
-  const [showMini, setShowMini] = useState(false);
-  const [miniClosed, setMiniClosed] = useState(false);
-  const [portalMounted, setPortalMounted] = useState(false);
-
-  const playerRef = useRef<HTMLDivElement>(null);
-  const navigatedRef = useRef(false);
-
-  // Track the last clip index we actually played, so playback (re)starts only on a
-  // genuine index change, never on initial mount (even under StrictMode double-invoke).
-  const prevClipIndexRef = useRef(currentClipIndex);
-
-  // Guard so each entry into the "autoadvance" state is handled exactly once.
-  // Advancing the index re-runs the autoadvance effect (currentClipIndex is a dep)
-  // before state leaves "autoadvance"; without this guard that causes a double
-  // advance (a skipped clip). Reset to false once state leaves "autoadvance".
-  const autoadvanceHandledRef = useRef(false);
-
-  // Portal mount guard (SSR-safe): createPortal only runs after hydration.
-  // setState here is the canonical mounted-flag pattern.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPortalMounted(true);
-  }, []);
-
-  // Autoplay flag from previous lesson (runs once on mount per lesson instance)
-  useEffect(() => {
-    let shouldPlay = false;
-    try {
-      const flag = sessionStorage.getItem(AUTOPLAY_KEY);
-      sessionStorage.removeItem(AUTOPLAY_KEY);
-      if (flag === lesson.id) shouldPlay = true;
-    } catch {
-      // sessionStorage unavailable
-    }
-    if (shouldPlay) player.play();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lesson.id]);
-
-  // React to currentClipIndex changes: reset the timer and auto-play.
-  // Using prevClipIndexRef (initialized to the starting index) means the guard
-  // holds on initial mount AND under StrictMode double-invoke, because both
-  // invocations see prevClipIndexRef.current === currentClipIndex and return early.
-  // Only a genuine index change (selection or auto-advance) triggers playback.
-  useEffect(() => {
-    if (prevClipIndexRef.current === currentClipIndex) return; // mount or no real change
-    prevClipIndexRef.current = currentClipIndex;
-    reset();
-    // Small rAF delay so reset() state flush is complete before play()
-    const raf = requestAnimationFrame(() => { player.play(); });
-    return () => cancelAnimationFrame(raf);
-  // reset and player.play are stable useCallback refs from useSimulatedPlayer
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentClipIndex]);
-
-  // IntersectionObserver for mini-player
-  useEffect(() => {
-    const el = playerRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        const visible = entry.isIntersecting && entry.intersectionRatio >= 0.2;
-        if (visible) {
-          setShowMini(false);
-          setMiniClosed(false);
-        } else {
-          if (!miniClosed) setShowMini(true);
-        }
-      },
-      { threshold: [0, 0.2] },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [miniClosed]);
-
-  // Navigate to next lesson
-  const navigateToNext = useCallback(() => {
-    if (!next) return;
-    if (navigatedRef.current) return;
-    navigatedRef.current = true;
-    try {
-      sessionStorage.setItem(AUTOPLAY_KEY, next.id);
-    } catch {
-      // ignore
-    }
-    router.push(`/classroom/${moduleSlug}/${next.id}`);
-  }, [next, moduleSlug, router]);
-
-  // Autoadvance effect: only runs when state transitions to "autoadvance".
-  // Callbacks onClipChange / onClipWatched are stable (useCallback with []
-  // deps in LessonContent), so this effect never re-runs spuriously.
-  useEffect(() => {
-    if (state !== "autoadvance") {
-      autoadvanceHandledRef.current = false;
-      return;
-    }
-    if (autoadvanceHandledRef.current) return;
-    autoadvanceHandledRef.current = true;
-    if (hasNextClip) {
-      // Advance within the lesson: notify parent about index change and watched
-      onClipWatched(currentClipIndex);
-      onClipChange(currentClipIndex + 1);
-    } else if (next) {
-      // Last clip in lesson, next lesson exists: navigate
-      onClipWatched(currentClipIndex);
-      navigateToNext();
-    } else {
-      // Last clip of the last lesson: mark watched so the lesson can complete
-      onClipWatched(currentClipIndex);
-    }
-  }, [state, hasNextClip, next, currentClipIndex, onClipWatched, onClipChange, navigateToNext]);
-
-  // "Play now" button inside the countdown overlay
-  const handlePlayNow = useCallback(() => {
-    player.confirmAutoplay();
-    // Mark the current clip watched in every case (including the last one) so a
-    // lesson finished via "Play now" still counts toward course progress.
-    onClipWatched(currentClipIndex);
-    if (hasNextClip) {
-      onClipChange(currentClipIndex + 1);
-    } else {
-      navigateToNext();
-    }
-  }, [player, hasNextClip, currentClipIndex, onClipWatched, onClipChange, navigateToNext]);
-
-  // Cancel: between clips = stay on current clip (paused/ended);
-  // last clip = show lesson-complete banner.
-  const handleCancel = useCallback(() => {
-    cancelCountdown();
-  }, [cancelCountdown]);
-
-  const handleMiniClose = useCallback(() => {
-    setShowMini(false);
-    setMiniClosed(true);
-  }, []);
-
-  const handleMiniReturn = useCallback(() => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, []);
-
-  // Overlay flags
-  const showModuleEnd = state === "ended" && !hasNextClip && !next;
-  const showLessonCancelledEnd = state === "ended" && !hasNextClip && !!next;
-
+  module,
+  moduleSlug,
+  next,
+  upNextTitle,
+  isYouTube,
+  youtubeHostRef,
+  // player state
+  countdownSec,
+  isPlaying,
+  countdownActive,
+  pct,
+  countdownTotal,
+  showModuleEnd,
+  showLessonCancelledEnd,
+  showMini,
+  portalMounted,
+  svgId,
+  reduced,
+  // handlers
+  onToggle,
+  onPlayNow,
+  onCancel,
+  onMiniClose,
+  onMiniReturn,
+  // intersection ref
+  inlinePlayerRef,
+}: {
+  clip: Clip;
+  clips: Clip[];
+  currentClipIndex: number;
+  module: Module;
+  moduleSlug: string;
+  next: Lesson | null;
+  upNextTitle: string | null;
+  isYouTube: boolean;
+  youtubeHostRef?: React.RefObject<HTMLDivElement | null>;
+  countdownSec: number;
+  isPlaying: boolean;
+  countdownActive: boolean;
+  pct: number;
+  countdownTotal: number;
+  showModuleEnd: boolean;
+  showLessonCancelledEnd: boolean;
+  showMini: boolean;
+  portalMounted: boolean;
+  svgId: string;
+  reduced: boolean;
+  onToggle: () => void;
+  onPlayNow: () => void;
+  onCancel: () => void;
+  onMiniClose: () => void;
+  onMiniReturn: () => void;
+  inlinePlayerRef: React.RefObject<HTMLDivElement | null>;
+}) {
   return (
     <>
       {/* ---- Inline player ---- */}
       <div
-        ref={playerRef}
+        ref={inlinePlayerRef}
         className="relative flex aspect-video items-center justify-center overflow-hidden rounded-3xl border border-line"
       >
-        <PlayerVisuals
-          accent={module.accent}
-          pct={pct}
-          isPlaying={isPlaying}
-          onToggle={togglePlay}
+        {/* Background gradient (always shown; for YouTube it sits behind the iframe) */}
+        <div
+          className="absolute inset-0 opacity-95"
+          style={{ backgroundImage: module.accent }}
         />
+        <div className="absolute inset-0 bg-black/20" />
+
+        {/* YouTube iframe host -- the YT.Player attaches here and must NOT be moved */}
+        {isYouTube && youtubeHostRef && (
+          <div
+            ref={youtubeHostRef}
+            className="absolute inset-0 z-0 [&_iframe]:w-full [&_iframe]:h-full [&_iframe]:border-0"
+            aria-label="YouTube video player"
+          />
+        )}
+
+        {/* Play/pause button (shown when not in countdown) */}
+        {!countdownActive && (
+          <button
+            onClick={onToggle}
+            aria-label={isPlaying ? "Pause" : "Play"}
+            className="relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-white/20 backdrop-blur transition-transform hover:scale-105 active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+          >
+            {isPlaying ? (
+              <Pause className="h-7 w-7" fill="white" stroke="white" />
+            ) : (
+              <Play className="h-7 w-7 translate-x-0.5" fill="white" stroke="none" />
+            )}
+          </button>
+        )}
+
+        {/* Progress bar */}
+        <div className="absolute bottom-0 left-0 right-0 z-10 h-1 bg-white/20">
+          <motion.div
+            className="h-full bg-white/80"
+            animate={{ width: `${pct}%` }}
+            transition={{ duration: 0.2, ease: "linear" }}
+          />
+        </div>
 
         {/* Countdown overlay */}
         <AnimatePresence>
@@ -587,15 +411,15 @@ export function LessonPlayer({
               animate={{ opacity: 1 }}
               exit={reduced ? { opacity: 0 } : { opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="absolute inset-0"
+              className="absolute inset-0 z-20"
             >
               <CountdownOverlay
                 nextTitle={upNextTitle}
                 countdownSec={countdownSec}
                 countdownTotal={countdownTotal}
                 svgId={svgId}
-                onPlayNow={handlePlayNow}
-                onCancel={handleCancel}
+                onPlayNow={onPlayNow}
+                onCancel={onCancel}
                 reduced={reduced}
               />
             </motion.div>
@@ -611,7 +435,7 @@ export function LessonPlayer({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="absolute inset-0"
+              className="absolute inset-0 z-20"
             >
               <ModuleEndOverlay moduleSlug={moduleSlug} />
             </motion.div>
@@ -619,7 +443,7 @@ export function LessonPlayer({
         </AnimatePresence>
 
         {/* Now-playing label + topic counter */}
-        <div className="absolute bottom-3 left-4 right-4 flex items-end justify-between pointer-events-none">
+        <div className="absolute bottom-3 left-4 right-4 z-10 flex items-end justify-between pointer-events-none">
           <div className="max-w-[70%]">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-white/60 leading-none mb-0.5">
               Now playing
@@ -634,6 +458,15 @@ export function LessonPlayer({
             </p>
           )}
         </div>
+
+        {/* YouTube source badge */}
+        {isYouTube && (
+          <div className="absolute top-3 right-3 z-10 pointer-events-none">
+            <span className="rounded-md bg-black/50 px-2 py-0.5 text-[10px] font-semibold text-white/70 backdrop-blur">
+              YouTube
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Lesson-complete banner: Cancel on last clip, next lesson exists */}
@@ -678,11 +511,11 @@ export function LessonPlayer({
                   countdownTotal={countdownTotal}
                   nextTitle={upNextTitle}
                   svgId={svgId}
-                  onToggle={togglePlay}
-                  onClose={handleMiniClose}
-                  onReturn={handleMiniReturn}
-                  onPlayNow={handlePlayNow}
-                  onCancelCountdown={handleCancel}
+                  onToggle={onToggle}
+                  onClose={onMiniClose}
+                  onReturn={onMiniReturn}
+                  onPlayNow={onPlayNow}
+                  onCancelCountdown={onCancel}
                   reduced={reduced}
                 />
               )}
@@ -692,4 +525,459 @@ export function LessonPlayer({
         )}
     </>
   );
+}
+
+// ---- Props shared by both clip sub-components ----
+interface ClipSubProps {
+  lesson: Lesson;
+  module: Module;
+  next: Lesson | null;
+  moduleSlug: string;
+  clips: Clip[];
+  currentClipIndex: number;
+  onClipChange: (i: number) => void;
+  onClipWatched: (i: number) => void;
+  /** Whether this clip auto-started (from a previous lesson's "Play now" or auto-advance). */
+  shouldAutoplay: boolean;
+}
+
+// ---- SimulatedClipPlayer ----
+// Always calls useSimulatedPlayer. Handles all player logic for gradient clips.
+function SimulatedClipPlayer({
+  lesson,
+  module,
+  next,
+  moduleSlug,
+  clips,
+  currentClipIndex,
+  onClipChange,
+  onClipWatched,
+  shouldAutoplay,
+}: ClipSubProps) {
+  const clip = clips[currentClipIndex] ?? clips[0];
+  const reduced = useReducedMotion() ?? false;
+  const svgId = useId().replace(/:/g, "");
+  const router = useRouter();
+
+  const player = useSimulatedPlayer(clip.durationSec);
+  const { state, elapsed, durationSec, countdownSec, togglePlay, cancelCountdown } = player;
+
+  const hasNextClip = currentClipIndex < clips.length - 1;
+  const nextClip = hasNextClip ? clips[currentClipIndex + 1] : null;
+  const upNextTitle = nextClip ? nextClip.title : next?.title ?? null;
+
+  const pct = Math.min((elapsed / durationSec) * 100, 100);
+  const isPlaying = state === "playing" || state === "countdown";
+  const countdownActive = state === "countdown";
+  const countdownTotal = 5;
+
+  // ---- Video progress tracking ----
+  const { recordVideoProgress } = useAcademy();
+  const lastRecordedSecRef = useRef(-1);
+
+  useEffect(() => {
+    lastRecordedSecRef.current = -1;
+  }, [currentClipIndex]);
+
+  useEffect(() => {
+    const intElapsed = Math.floor(elapsed);
+    if (intElapsed > lastRecordedSecRef.current && elapsed > 0) {
+      lastRecordedSecRef.current = intElapsed;
+      recordVideoProgress(lesson.id, currentClipIndex, elapsed, clip.durationSec);
+    }
+  }, [elapsed, lesson.id, currentClipIndex, clip.durationSec, recordVideoProgress]);
+
+  useEffect(() => {
+    if (state === "paused" && elapsed > 0) {
+      recordVideoProgress(lesson.id, currentClipIndex, elapsed, clip.durationSec);
+    }
+  }, [state, elapsed, lesson.id, currentClipIndex, clip.durationSec, recordVideoProgress]);
+
+  const flushRef = useRef({ lesson, currentClipIndex, clip, elapsed, recordVideoProgress });
+  useEffect(() => {
+    flushRef.current = { lesson, currentClipIndex, clip, elapsed, recordVideoProgress };
+  });
+  useEffect(() => {
+    return () => {
+      const { lesson: l, currentClipIndex: ci, clip: c, elapsed: e, recordVideoProgress: rec } =
+        flushRef.current;
+      if (e > 0) rec(l.id, ci, e, c.durationSec);
+    };
+  }, []);
+
+  // ---- Mini-player state ----
+  const [showMini, setShowMini] = useState(false);
+  const [miniClosed, setMiniClosed] = useState(false);
+  const [portalMounted, setPortalMounted] = useState(false);
+  const inlinePlayerRef = useRef<HTMLDivElement>(null);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setPortalMounted(true); }, []);
+
+  // ---- Autoplay on mount (from previous lesson or clip advance) ----
+  useEffect(() => {
+    if (shouldAutoplay) player.play();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---- Autoadvance ----
+  const navigatedRef = useRef(false);
+  const autoadvanceHandledRef = useRef(false);
+
+  const navigateToNext = useCallback(() => {
+    if (!next || navigatedRef.current) return;
+    navigatedRef.current = true;
+    try { sessionStorage.setItem(AUTOPLAY_KEY, next.id); } catch { /* ignore */ }
+    router.push(`/classroom/${moduleSlug}/${next.id}`);
+  }, [next, moduleSlug, router]);
+
+  useEffect(() => {
+    if (state !== "autoadvance") {
+      autoadvanceHandledRef.current = false;
+      return;
+    }
+    if (autoadvanceHandledRef.current) return;
+    autoadvanceHandledRef.current = true;
+    if (hasNextClip) {
+      onClipWatched(currentClipIndex);
+      onClipChange(currentClipIndex + 1);
+    } else if (next) {
+      onClipWatched(currentClipIndex);
+      navigateToNext();
+    } else {
+      onClipWatched(currentClipIndex);
+    }
+  }, [state, hasNextClip, next, currentClipIndex, onClipWatched, onClipChange, navigateToNext]);
+
+  const handlePlayNow = useCallback(() => {
+    player.confirmAutoplay();
+    onClipWatched(currentClipIndex);
+    if (hasNextClip) {
+      onClipChange(currentClipIndex + 1);
+    } else {
+      navigateToNext();
+    }
+  }, [player, hasNextClip, currentClipIndex, onClipWatched, onClipChange, navigateToNext]);
+
+  const handleCancel = useCallback(() => { cancelCountdown(); }, [cancelCountdown]);
+  const handleMiniClose = useCallback(() => { setShowMini(false); setMiniClosed(true); }, []);
+  const handleMiniReturn = useCallback(() => { window.scrollTo({ top: 0, behavior: "smooth" }); }, []);
+
+  // IntersectionObserver
+  useEffect(() => {
+    const el = inlinePlayerRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const visible = entry.isIntersecting && entry.intersectionRatio >= 0.2;
+        if (visible) { setShowMini(false); setMiniClosed(false); }
+        else if (!miniClosed) { setShowMini(true); }
+      },
+      { threshold: [0, 0.2] },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [miniClosed]);
+
+  const showModuleEnd = state === "ended" && !hasNextClip && !next;
+  const showLessonCancelledEnd = state === "ended" && !hasNextClip && !!next;
+
+  return (
+    <PlayerUI
+      clip={clip}
+      clips={clips}
+      currentClipIndex={currentClipIndex}
+      module={module}
+      moduleSlug={moduleSlug}
+      next={next}
+      upNextTitle={upNextTitle}
+      isYouTube={false}
+      countdownSec={countdownSec}
+      isPlaying={isPlaying}
+      countdownActive={countdownActive}
+      pct={pct}
+      countdownTotal={countdownTotal}
+      showModuleEnd={showModuleEnd}
+      showLessonCancelledEnd={showLessonCancelledEnd}
+      showMini={showMini}
+      portalMounted={portalMounted}
+      svgId={svgId}
+      reduced={reduced}
+      onToggle={togglePlay}
+      onPlayNow={handlePlayNow}
+      onCancel={handleCancel}
+      onMiniClose={handleMiniClose}
+      onMiniReturn={handleMiniReturn}
+      inlinePlayerRef={inlinePlayerRef}
+    />
+  );
+}
+
+// ---- YouTubeClipPlayer ----
+// Always calls useYouTubePlayer. Handles all player logic for YouTube clips.
+function YouTubeClipPlayer({
+  lesson,
+  module,
+  next,
+  moduleSlug,
+  clips,
+  currentClipIndex,
+  onClipChange,
+  onClipWatched,
+  shouldAutoplay,
+}: ClipSubProps) {
+  const clip = clips[currentClipIndex] ?? clips[0];
+  const reduced = useReducedMotion() ?? false;
+  const svgId = useId().replace(/:/g, "");
+  const router = useRouter();
+
+  const youtubeHostRef = useRef<HTMLDivElement>(null);
+  const player = useYouTubePlayer(youtubeHostRef, clip.videoId!);
+  const { state, elapsed, durationSec, countdownSec, togglePlay, cancelCountdown } = player;
+
+  const hasNextClip = currentClipIndex < clips.length - 1;
+  const nextClip = hasNextClip ? clips[currentClipIndex + 1] : null;
+  const upNextTitle = nextClip ? nextClip.title : next?.title ?? null;
+
+  const effectiveDuration = durationSec || clip.durationSec;
+  const pct = Math.min((elapsed / effectiveDuration) * 100, 100);
+  const isPlaying = state === "playing" || state === "countdown";
+  const countdownActive = state === "countdown";
+  const countdownTotal = 5;
+
+  // ---- Video progress tracking ----
+  const { recordVideoProgress } = useAcademy();
+  const lastRecordedSecRef = useRef(-1);
+
+  useEffect(() => {
+    lastRecordedSecRef.current = -1;
+  }, [currentClipIndex]);
+
+  useEffect(() => {
+    const intElapsed = Math.floor(elapsed);
+    if (intElapsed > lastRecordedSecRef.current && elapsed > 0) {
+      lastRecordedSecRef.current = intElapsed;
+      recordVideoProgress(lesson.id, currentClipIndex, elapsed, effectiveDuration);
+    }
+  }, [elapsed, lesson.id, currentClipIndex, effectiveDuration, recordVideoProgress]);
+
+  useEffect(() => {
+    if (state === "paused" && elapsed > 0) {
+      recordVideoProgress(lesson.id, currentClipIndex, elapsed, effectiveDuration);
+    }
+  }, [state, elapsed, lesson.id, currentClipIndex, effectiveDuration, recordVideoProgress]);
+
+  const flushRef = useRef({ lesson, currentClipIndex, clip, elapsed, effectiveDuration, recordVideoProgress });
+  useEffect(() => {
+    flushRef.current = { lesson, currentClipIndex, clip, elapsed, effectiveDuration, recordVideoProgress };
+  });
+  useEffect(() => {
+    return () => {
+      const { lesson: l, currentClipIndex: ci, clip: c, elapsed: e, effectiveDuration: d, recordVideoProgress: rec } =
+        flushRef.current;
+      if (e > 0) rec(l.id, ci, e, d || c.durationSec);
+    };
+  }, []);
+
+  // ---- Mini-player state ----
+  const [showMini, setShowMini] = useState(false);
+  const [miniClosed, setMiniClosed] = useState(false);
+  const [portalMounted, setPortalMounted] = useState(false);
+  const inlinePlayerRef = useRef<HTMLDivElement>(null);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setPortalMounted(true); }, []);
+
+  // ---- Autoplay on mount (from previous lesson) ----
+  // YouTube player is not ready immediately; we play once the API calls onReady
+  // internally. The useYouTubePlayer hook handles this via YT.Player onReady.
+  // We just need to call play() once shouldAutoplay is true.
+  // Since the player starts "idle" and transitions to "idle/paused" on ready,
+  // we store the intent in a ref and call play() after the first state update.
+  const autoplayFiredRef = useRef(false);
+  useEffect(() => {
+    if (!shouldAutoplay || autoplayFiredRef.current) return;
+    if (state === "idle") {
+      // Player is ready and idle -- trigger play
+      autoplayFiredRef.current = true;
+      player.play();
+    }
+  // Re-run when state changes (e.g. when YT player signals onReady -> idle)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, shouldAutoplay]);
+
+  // ---- Autoadvance ----
+  const navigatedRef = useRef(false);
+  const autoadvanceHandledRef = useRef(false);
+
+  const navigateToNext = useCallback(() => {
+    if (!next || navigatedRef.current) return;
+    navigatedRef.current = true;
+    try { sessionStorage.setItem(AUTOPLAY_KEY, next.id); } catch { /* ignore */ }
+    router.push(`/classroom/${moduleSlug}/${next.id}`);
+  }, [next, moduleSlug, router]);
+
+  useEffect(() => {
+    if (state !== "autoadvance") {
+      autoadvanceHandledRef.current = false;
+      return;
+    }
+    if (autoadvanceHandledRef.current) return;
+    autoadvanceHandledRef.current = true;
+    if (hasNextClip) {
+      onClipWatched(currentClipIndex);
+      onClipChange(currentClipIndex + 1);
+    } else if (next) {
+      onClipWatched(currentClipIndex);
+      navigateToNext();
+    } else {
+      onClipWatched(currentClipIndex);
+    }
+  }, [state, hasNextClip, next, currentClipIndex, onClipWatched, onClipChange, navigateToNext]);
+
+  const handlePlayNow = useCallback(() => {
+    player.confirmAutoplay();
+    onClipWatched(currentClipIndex);
+    if (hasNextClip) {
+      onClipChange(currentClipIndex + 1);
+    } else {
+      navigateToNext();
+    }
+  }, [player, hasNextClip, currentClipIndex, onClipWatched, onClipChange, navigateToNext]);
+
+  const handleCancel = useCallback(() => { cancelCountdown(); }, [cancelCountdown]);
+  const handleMiniClose = useCallback(() => { setShowMini(false); setMiniClosed(true); }, []);
+  const handleMiniReturn = useCallback(() => { window.scrollTo({ top: 0, behavior: "smooth" }); }, []);
+
+  // IntersectionObserver
+  useEffect(() => {
+    const el = inlinePlayerRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const visible = entry.isIntersecting && entry.intersectionRatio >= 0.2;
+        if (visible) { setShowMini(false); setMiniClosed(false); }
+        else if (!miniClosed) { setShowMini(true); }
+      },
+      { threshold: [0, 0.2] },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [miniClosed]);
+
+  const showModuleEnd = state === "ended" && !hasNextClip && !next;
+  const showLessonCancelledEnd = state === "ended" && !hasNextClip && !!next;
+
+  return (
+    <PlayerUI
+      clip={clip}
+      clips={clips}
+      currentClipIndex={currentClipIndex}
+      module={module}
+      moduleSlug={moduleSlug}
+      next={next}
+      upNextTitle={upNextTitle}
+      isYouTube={true}
+      youtubeHostRef={youtubeHostRef}
+      countdownSec={countdownSec}
+      isPlaying={isPlaying}
+      countdownActive={countdownActive}
+      pct={pct}
+      countdownTotal={countdownTotal}
+      showModuleEnd={showModuleEnd}
+      showLessonCancelledEnd={showLessonCancelledEnd}
+      showMini={showMini}
+      portalMounted={portalMounted}
+      svgId={svgId}
+      reduced={reduced}
+      onToggle={togglePlay}
+      onPlayNow={handlePlayNow}
+      onCancel={handleCancel}
+      onMiniClose={handleMiniClose}
+      onMiniReturn={handleMiniReturn}
+      inlinePlayerRef={inlinePlayerRef}
+    />
+  );
+}
+
+// ---- LessonPlayer (controlled outer shell) ----
+// Decides which clip sub-component to render. Reads session storage for
+// autoplay intent and passes it down. The key prop on the sub-component
+// ensures React re-mounts (and resets the hook) on every clip change.
+export function LessonPlayer({
+  lesson,
+  module,
+  next,
+  moduleSlug,
+  clips,
+  currentClipIndex,
+  onClipChange,
+  onClipWatched,
+}: LessonPlayerProps) {
+  const clip = clips[currentClipIndex] ?? clips[0];
+  const isYouTube = !!clip.videoId;
+
+  // shouldAutoplay tracks two sources:
+  // 1. A previous lesson set AUTOPLAY_KEY in sessionStorage (lessonAutoplay state).
+  // 2. currentClipIndex changed from its previous value, meaning a clip advance
+  //    or manual playlist selection (clipAutoplay state).
+  //
+  // Both are regular state so they can be read and set during/after render without
+  // violating the react-hooks/refs rule.
+  const [lessonAutoplay, setLessonAutoplay] = useState(false);
+  const [prevClipIndex, setPrevClipIndex] = useState(currentClipIndex);
+  const [clipAutoplay, setClipAutoplay] = useState(false);
+
+  // Detect clip index changes during render using the React state-from-props pattern.
+  // This is the canonical way to derive state from a changing prop.
+  if (prevClipIndex !== currentClipIndex) {
+    setPrevClipIndex(currentClipIndex);
+    setClipAutoplay(true);
+  }
+
+  // Read sessionStorage autoplay flag once on lesson mount.
+  useEffect(() => {
+    try {
+      const flag = sessionStorage.getItem(AUTOPLAY_KEY);
+      sessionStorage.removeItem(AUTOPLAY_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (flag === lesson.id) setLessonAutoplay(true);
+    } catch {
+      // sessionStorage unavailable
+    }
+   
+  }, [lesson.id]);
+
+  // After the sub-component mounts with shouldAutoplay=true, reset both flags
+  // so they do not fire again on subsequent renders.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (lessonAutoplay) setLessonAutoplay(false);
+     
+    if (clipAutoplay) setClipAutoplay(false);
+  // Re-run when clip index changes so flags reset after the new sub-component mounts.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentClipIndex]);
+
+  const shouldAutoplay = lessonAutoplay || clipAutoplay;
+
+  const sharedProps: ClipSubProps = {
+    lesson,
+    module,
+    next,
+    moduleSlug,
+    clips,
+    currentClipIndex,
+    onClipChange,
+    onClipWatched,
+    shouldAutoplay,
+  };
+
+  // Key: re-mount sub-component on clip change so the hook resets cleanly.
+  const subKey = `${lesson.id}-clip-${currentClipIndex}-${clip.id}`;
+
+  if (isYouTube) {
+    return <YouTubeClipPlayer key={subKey} {...sharedProps} />;
+  }
+  return <SimulatedClipPlayer key={subKey} {...sharedProps} />;
 }

@@ -76,6 +76,12 @@ export interface Clip {
   id: string;
   title: string;
   durationSec: number;
+  /**
+   * YouTube video ID for this clip (e.g. "dQw4w9WgXcQ").
+   * When present, the real YouTube IFrame player is used.
+   * When absent, the simulated placeholder player is used.
+   */
+  videoId?: string;
 }
 
 /** Derived helpers used across the UI. */
