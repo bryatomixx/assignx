@@ -132,7 +132,7 @@ function SignInForm({ onSwitchTab }: { onSwitchTab: () => void }) {
 
     // Redirect based on the resolved user's role returned by signIn (not stale
     // closure state).
-    router.push(result.user?.role === "admin" ? "/admin" : "/classroom");
+    router.push(result.user?.role === "admin" ? "/dashboard" : "/classroom");
   };
 
   // Map specific error patterns to actionable messages with a sign-up prompt.
@@ -278,7 +278,7 @@ function SignUpForm({ onSwitchTab }: { onSwitchTab: () => void }) {
 
     // Redirect based on the resolved user's role returned by signUp (not stale
     // closure state).
-    router.push(result.user?.role === "admin" ? "/admin" : "/classroom");
+    router.push(result.user?.role === "admin" ? "/dashboard" : "/classroom");
   };
 
   const renderGlobalError = () => {
@@ -382,7 +382,7 @@ function LoginInner() {
   // authLoading so we do not redirect before the session resolves.
   useEffect(() => {
     if (!authLoading && currentUser) {
-      router.replace(currentUser.role === "admin" ? "/admin" : "/classroom");
+      router.replace(currentUser.role === "admin" ? "/dashboard" : "/classroom");
     }
   }, [authLoading, currentUser, router]);
 

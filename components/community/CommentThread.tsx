@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { Pin, Send, Trash2 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { RoleBadge } from "@/components/community/RoleBadge";
+import { UserNameButton } from "@/components/community/UserPreviewCard";
 import { useBoard } from "@/lib/store/BoardProvider";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { cn, relativeTime } from "@/lib/utils";
@@ -79,9 +80,10 @@ export function CommentThread({ postId }: CommentThreadProps) {
                   <Avatar emoji={author?.avatar ?? "?"} size="sm" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[13px] font-semibold text-ink-900">
-                        {author?.name ?? "Unknown"}
-                      </span>
+                      <UserNameButton
+                        userId={comment.authorId}
+                        className="text-[13px]"
+                      />
                       <RoleBadge role={role} />
                       <span className="text-[12px] text-ink-300">
                         {relativeTime(comment.createdAt)}

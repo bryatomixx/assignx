@@ -191,6 +191,7 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
           unlockedModuleIds,
           // Use the real join date when present; fall back to the placeholder.
           joinedAt: profile.joinedAt ?? PLACEHOLDER_JOINED,
+          bio: profile.bio ?? undefined,
         } satisfies User;
       });
 

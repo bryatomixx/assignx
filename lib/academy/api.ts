@@ -54,6 +54,8 @@ export interface AcademyProfileRow {
   avatar: string;
   // ISO date the user joined; null if not set in the DB.
   joinedAt: string | null;
+  // Public self-description. Always returned for all profiles (not gated like email).
+  bio: string | null;
 }
 
 export interface AcademyState {

@@ -16,6 +16,7 @@ import {
 import { Avatar } from "@/components/ui/Avatar";
 import { RoleBadge } from "@/components/community/RoleBadge";
 import { CommentThread } from "@/components/community/CommentThread";
+import { UserNameButton } from "@/components/community/UserPreviewCard";
 import { useBoard } from "@/lib/store/BoardProvider";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { cn, relativeTime, isSafeUrl } from "@/lib/utils";
@@ -110,14 +111,43 @@ export function PostCard({ post }: PostCardProps) {
 
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <Avatar emoji={author?.avatar ?? "?"} />
-          <div>
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-sm font-semibold text-ink-900">
-                {author?.name ?? "Unknown"}
-              </span>
+              <UserNameButton
+                userId={post.authorId}
+                className="text-sm"
+              />
               <RoleBadge role={role} />
+              {/* Follow pill: next to the name so it reads as "follow this person" */}
+              {!isSelf && (
+                <button
+                  onClick={handleFollow}
+                  aria-label={
+                    following
+                      ? `Unfollow ${author?.name ?? "user"}`
+                      : `Follow ${author?.name ?? "user"}`
+                  }
+                  aria-disabled={paused}
+                  title={paused ? "Reactivate your account to interact" : undefined}
+                  disabled={paused}
+                  className={cn(
+                    "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300",
+                    following
+                      ? "border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100"
+                      : "border-line bg-white text-ink-500 hover:bg-surface-2 hover:text-ink-900",
+                    paused && "cursor-not-allowed opacity-50",
+                  )}
+                >
+                  {following ? (
+                    <UserCheck className="h-3 w-3" />
+                  ) : (
+                    <UserPlus className="h-3 w-3" />
+                  )}
+                  {following ? "Following" : "Follow"}
+                </button>
+              )}
             </div>
             <span className="text-xs text-ink-300">
               {relativeTime(post.createdAt)}
@@ -284,34 +314,6 @@ export function PostCard({ post }: PostCardProps) {
           {comments > 0 && <span>{comments}</span>}
         </button>
 
-        {/* Follow pill */}
-        {!isSelf && (
-          <button
-            onClick={handleFollow}
-            aria-label={
-              following
-                ? `Unfollow ${author?.name ?? "user"}`
-                : `Follow ${author?.name ?? "user"}`
-            }
-            aria-disabled={paused}
-            title={paused ? "Reactivate your account to interact" : undefined}
-            disabled={paused}
-            className={cn(
-              "min-h-[44px] ml-auto flex items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300",
-              following
-                ? "border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100"
-                : "border-line bg-white text-ink-500 hover:bg-surface-2 hover:text-ink-900",
-              paused && "cursor-not-allowed opacity-50",
-            )}
-          >
-            {following ? (
-              <UserCheck className="h-4 w-4" />
-            ) : (
-              <UserPlus className="h-4 w-4" />
-            )}
-            {following ? "Following" : "Follow"}
-          </button>
-        )}
       </div>
 
       {/* Comment thread (inline) */}

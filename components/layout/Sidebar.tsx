@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   GraduationCap,
+  LayoutDashboard,
   LogOut,
   ShieldCheck,
   Sparkles,
@@ -25,6 +26,10 @@ export function Sidebar() {
   if (!ready || !currentUser) return <aside className="w-[264px] shrink-0" />;
 
   const nav = [
+    // Dashboard is the admin-only overview; shown above Classroom for admins.
+    ...(currentUser.role === "admin"
+      ? [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }]
+      : []),
     { href: "/classroom", label: "Classroom", icon: GraduationCap },
     { href: "/community", label: "Community", icon: Users2 },
     ...(currentUser.role === "admin"

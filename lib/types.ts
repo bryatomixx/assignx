@@ -14,6 +14,8 @@ export interface User {
   unlockedModuleIds: string[];
   avatar: string; // emoji (assignx memoji style)
   joinedAt: string; // ISO date
+  /** Public self-description shown on profile and preview card. */
+  bio?: string;
   /** Access code used to sign in (demo login). */
   code?: string;
 }

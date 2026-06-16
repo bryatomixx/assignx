@@ -13,6 +13,7 @@ interface DbProfile {
   status: string;
   avatar: string;
   joined_at: string | null;
+  bio: string | null;
 }
 
 interface DbLessonProgress {
@@ -42,6 +43,7 @@ interface DbModuleAccess {
 
 // Email is PII: include it only when the viewer is an admin or it is the
 // viewer's own profile. For all other profiles it is returned as null.
+// bio is a public self-description and is always returned for all profiles.
 function mapProfile(r: DbProfile, viewerId: string, viewerIsAdmin: boolean) {
   const canSeeEmail = viewerIsAdmin || r.id === viewerId;
   return {
@@ -52,6 +54,7 @@ function mapProfile(r: DbProfile, viewerId: string, viewerIsAdmin: boolean) {
     status: r.status as "active" | "paused",
     avatar: r.avatar,
     joinedAt: r.joined_at,
+    bio: r.bio,
   };
 }
 
@@ -106,7 +109,7 @@ export async function GET(): Promise<Response> {
 
     const [profilesRes, progressRes, homeworkRes, videoProgressRes, moduleAccessRes] =
       await Promise.all([
-        db.from("profiles").select("id, name, email, role, status, avatar, joined_at"),
+        db.from("profiles").select("id, name, email, role, status, avatar, joined_at, bio"),
         db.from("lesson_progress").select("user_id, lesson_id"),
         db.from("homework").select("user_id, lesson_id"),
         db.from("video_progress").select("user_id, lesson_id, clip_index, elapsed_sec, duration_sec"),

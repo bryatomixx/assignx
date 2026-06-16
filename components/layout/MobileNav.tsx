@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { GraduationCap, ShieldCheck, Users2 } from "lucide-react";
+import { GraduationCap, LayoutDashboard, ShieldCheck, Users2 } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { Avatar } from "@/components/ui/Avatar";
 import { useAcademy } from "@/lib/store/AcademyProvider";
@@ -13,6 +13,10 @@ export function MobileNav() {
   const { currentUser, ready } = useAcademy();
 
   const nav = [
+    // Dashboard is admin-only; placed above Classroom when visible.
+    ...(currentUser?.role === "admin"
+      ? [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }]
+      : []),
     { href: "/classroom", label: "Classroom", icon: GraduationCap },
     { href: "/community", label: "Community", icon: Users2 },
     ...(currentUser?.role === "admin"
