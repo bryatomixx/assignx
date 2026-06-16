@@ -250,6 +250,21 @@ export function useYouTubePlayer(
         events: {
           onReady: () => {
             if (isCancelled || destroyedRef.current) return;
+            // The IFrame API replaces the host div with an <iframe> and sizes it
+            // in pixels, which leaves gaps in the frame. Force it to fill.
+            try {
+              const iframe = player.getIframe();
+              if (iframe) {
+                iframe.style.position = "absolute";
+                iframe.style.top = "0";
+                iframe.style.left = "0";
+                iframe.style.width = "100%";
+                iframe.style.height = "100%";
+                iframe.style.border = "0";
+              }
+            } catch {
+              // getIframe not available yet; ignore
+            }
             const dur = player.getDuration();
             if (dur > 0) {
               durationRef.current = dur;
