@@ -378,6 +378,22 @@ function PlayerUI({
           />
         )}
 
+        {/* Branded cover over the YouTube iframe while paused or idle. YouTube
+            shows its own pause overlay (center button, suggested videos, logo)
+            that cannot be hidden via CSS on a cross-origin iframe. Covering it
+            with the module gradient means only our single control shows, so the
+            play/pause buttons no longer double up. While playing, the cover is
+            gone and the real video is visible. */}
+        {isYouTube && !isPlaying && (
+          <div className="absolute inset-0 z-[5]" aria-hidden="true">
+            <div
+              className="absolute inset-0 opacity-95"
+              style={{ backgroundImage: module.accent }}
+            />
+            <div className="absolute inset-0 bg-black/20" />
+          </div>
+        )}
+
         {/* Play/pause button (shown when not in countdown) */}
         {!countdownActive && (
           <button
