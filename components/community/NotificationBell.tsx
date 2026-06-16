@@ -22,7 +22,7 @@ function notifText(
     case "follow":
       return `${actorName} started following you`;
     case "post_approved":
-      return `Your post was approved by ${actorName}`;
+      return "Your post was approved";
     case "post_rejected":
       return "Your post was not approved";
     case "post_pending":
