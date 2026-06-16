@@ -10,7 +10,6 @@ import {
 } from "react";
 import type {
   Post,
-  PostStatus,
   PostMediaType,
   Comment,
   Like,
@@ -19,7 +18,6 @@ import type {
   ModPermissions,
   CommunityRole,
   AppNotification,
-  NotificationType,
 } from "@/lib/types";
 import {
   computeStats,
@@ -29,28 +27,31 @@ import {
 } from "@/lib/community/gamification";
 import type { LeaderboardEntry, UserStats, Badge, LevelInfo } from "@/lib/community/gamification";
 import {
-  loadPosts,
-  savePosts,
-  loadComments,
-  saveComments,
-  loadLikes,
-  saveLikes,
-  loadFollows,
-  saveFollows,
-  loadCommunitySettings,
-  saveCommunitySettings,
-  loadMods,
-  saveMods,
-  loadNotifications,
-  saveNotifications,
-} from "@/lib/store/storage";
+  fetchCommunityState,
+  createPost as apiCreatePost,
+  approvePost as apiApprovePost,
+  rejectPost as apiRejectPost,
+  deletePost as apiDeletePost,
+  pinPost as apiPinPost,
+  unpinPost as apiUnpinPost,
+  likePost as apiLikePost,
+  unlikePost as apiUnlikePost,
+  addComment as apiAddComment,
+  deleteComment as apiDeleteComment,
+  pinComment as apiPinComment,
+  unpinComment as apiUnpinComment,
+  follow as apiFollow,
+  unfollow as apiUnfollow,
+  setGlobalApproval as apiSetGlobalApproval,
+  setAutoApprove as apiSetAutoApprove,
+  promoteMod as apiPromoteMod,
+  demoteMod as apiDemoteMod,
+  setModPermission as apiSetModPermission,
+  markNotificationRead as apiMarkNotificationRead,
+  markAllNotificationsRead as apiMarkAllNotificationsRead,
+  purgeUser as apiPurgeUser,
+} from "@/lib/community/api";
 import { useAcademy } from "@/lib/store/AcademyProvider";
-
-// ---- ID generation ----
-// Uses Math.random so it works in both Node (tests) and browser without Date.now().
-function genId(prefix: string): string {
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
-}
 
 // ---- Context interface ----
 
@@ -189,6 +190,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [likes, setLikes] = useState<Like[]>([]);
   const [follows, setFollows] = useState<Follow[]>([]);
+  // autoApproveUserIds is managed server-side; we keep an empty array client-side
+  // because the server already enforces per-user auto-approve rules on mutations.
   const [settings, setSettingsState] = useState<CommunitySettings>({
     globalApproval: true,
     autoApproveUserIds: [],
@@ -197,19 +200,37 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [ready, setReady] = useState(false);
 
-  // Hydrate from localStorage on mount (client only). setState here is the
-  // canonical hydrate-on-mount pattern (same as AcademyProvider).
+  // ---- Fetch helper: load full state from the server API ----
+
+  const loadState = useCallback(async () => {
+    try {
+      const state = await fetchCommunityState();
+      setPosts(state.posts);
+      setComments(state.comments);
+      setLikes(state.likes);
+      setFollows(state.follows);
+      setSettingsState({
+        globalApproval: state.settings.globalApproval,
+        // autoApproveUserIds lives on the server; expose an empty array to the
+        // client since the UI never needs to enumerate it directly.
+        autoApproveUserIds: [],
+      });
+      setModsState(state.mods);
+      setNotifications(state.notifications);
+    } catch {
+      // Leave whatever state is already in memory so the UI does not go blank.
+    } finally {
+      setReady(true);
+    }
+  }, []);
+
+  // Hydrate from the server API on mount. loadState setStates after an await
+  // (canonical load-on-mount); the lint guard is the same one used for the
+  // other hydrate-on-mount effects in this codebase.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPosts(loadPosts());
-    setComments(loadComments());
-    setLikes(loadLikes());
-    setFollows(loadFollows());
-    setSettingsState(loadCommunitySettings());
-    setModsState(loadMods());
-    setNotifications(loadNotifications());
-    setReady(true);
-  }, []);
+    void loadState();
+  }, [loadState]);
 
   // ---- Current user helpers ----
 
@@ -283,7 +304,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     [currentUserId, roleOf, mods],
   );
 
-  // Owner of a post can always delete it; mods/admins can also delete
+  // Owner of a post can always delete it; mods/admins can also delete.
   const canDeletePost = useCallback(
     (postId: string): boolean => {
       const post = posts.find((p) => p.id === postId);
@@ -294,7 +315,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     [posts, currentUserId, canDeletePosts],
   );
 
-  // Owner of a comment can always delete it; mods/admins with permission can also delete
+  // Owner of a comment can always delete it; mods/admins with permission can also delete.
   const canDeleteComment = useCallback(
     (commentId: string): boolean => {
       const comment = comments.find((c) => c.id === commentId);
@@ -303,34 +324,6 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       return canDeleteComments(currentUserId);
     },
     [comments, currentUserId, canDeleteComments],
-  );
-
-  // ---- Notification helper (internal) ----
-
-  // Creates a notification and persists it. Never notifies when recipient === actor.
-  const pushNotification = useCallback(
-    (
-      recipientId: string,
-      actorId: string,
-      type: NotificationType,
-      postId: string | null,
-      existingNotifs: AppNotification[],
-    ): AppNotification[] => {
-      if (recipientId === actorId) return existingNotifs;
-      const notif: AppNotification = {
-        id: genId("notif"),
-        recipientId,
-        actorId,
-        type,
-        postId,
-        createdAt: new Date().toISOString(),
-        read: false,
-      };
-      const next = [notif, ...existingNotifs];
-      saveNotifications(next);
-      return next;
-    },
-    [],
   );
 
   // ---- Feed ----
@@ -416,23 +409,6 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     [comments],
   );
 
-  // ---- Post status helper ----
-
-  const resolveInitialStatus = useCallback(
-    (authorId: string): PostStatus => {
-      const role = roleOf(authorId);
-      // Admin and mods are auto-approved
-      if (role === "admin" || role === "mod") return "approved";
-      // Users in the auto-approve list bypass moderation
-      if (settings.autoApproveUserIds.includes(authorId)) return "approved";
-      // When globalApproval is false (open board) every post is auto-approved
-      if (!settings.globalApproval) return "approved";
-      // Otherwise posts require moderation
-      return "pending";
-    },
-    [roleOf, settings],
-  );
-
   // ---- Post mutations ----
 
   const createPost = useCallback(
@@ -442,176 +418,51 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       mediaPayload: string | null;
     }): Post | null => {
       if (!currentUserId) return null;
-      if (academy.isPaused(currentUserId)) return null;
-      const safeBody = input.body.slice(0, 2000);
-      if (!safeBody.trim()) return null;
-      const status = resolveInitialStatus(currentUserId);
-      const post: Post = {
-        id: genId("post"),
-        authorId: currentUserId,
-        body: safeBody,
-        mediaType: input.mediaType,
-        mediaPayload: input.mediaPayload,
-        status,
-        pinned: false,
-        createdAt: new Date().toISOString(),
-        approvedBy: status === "approved" ? currentUserId : null,
-        approvedAt: status === "approved" ? new Date().toISOString() : null,
-        rejectedBy: null,
-        rejectedAt: null,
-      };
-      setPosts((prev) => {
-        const next = [post, ...prev];
-        savePosts(next);
-        return next;
-      });
-      // Notify all users who can approve when the post is pending
-      if (status === "pending") {
-        setNotifications((prev) => {
-          let next = [...prev];
-          const approvers = academy.users.filter(
-            (u) => canApprovePosts(u.id) && u.id !== currentUserId,
-          );
-          for (const approver of approvers) {
-            // pushNotification persists on each call; final iteration leaves
-            // the complete list on disk.
-            next = pushNotification(
-              approver.id,
-              currentUserId,
-              "post_pending",
-              post.id,
-              next,
-            );
-          }
-          return next;
-        });
-      }
-      return post;
+      // Fire-and-forget: kick off the async call then refetch to sync state.
+      void apiCreatePost(currentUserId, input).then(() => loadState());
+      return null;
     },
-    [currentUserId, academy, resolveInitialStatus, canApprovePosts, pushNotification],
+    [currentUserId, loadState],
   );
 
   const approvePost = useCallback(
     (postId: string) => {
-      if (!canApprovePosts()) return;
-      const post = posts.find((p) => p.id === postId);
-      if (!post) return;
-      const now = new Date().toISOString();
-      setPosts((prev) => {
-        const next = prev.map((p) =>
-          p.id === postId
-            ? {
-                ...p,
-                status: "approved" as PostStatus,
-                approvedBy: currentUserId,
-                approvedAt: now,
-                rejectedBy: null,
-                rejectedAt: null,
-              }
-            : p,
-        );
-        savePosts(next);
-        return next;
-      });
-      // Notify the post author
-      setNotifications((prev) =>
-        pushNotification(
-          post.authorId,
-          currentUserId,
-          "post_approved",
-          postId,
-          prev,
-        ),
-      );
+      if (!currentUserId) return;
+      void apiApprovePost(currentUserId, postId).then(() => loadState());
     },
-    [canApprovePosts, posts, currentUserId, pushNotification],
+    [currentUserId, loadState],
   );
 
   const rejectPost = useCallback(
     (postId: string) => {
-      if (!canApprovePosts()) return;
-      const post = posts.find((p) => p.id === postId);
-      if (!post) return;
-      const now = new Date().toISOString();
-      setPosts((prev) => {
-        const next = prev.map((p) =>
-          p.id === postId
-            ? {
-                ...p,
-                status: "rejected" as PostStatus,
-                rejectedBy: currentUserId,
-                rejectedAt: now,
-                approvedBy: null,
-                approvedAt: null,
-              }
-            : p,
-        );
-        savePosts(next);
-        return next;
-      });
-      // Notify the post author
-      setNotifications((prev) =>
-        pushNotification(
-          post.authorId,
-          currentUserId,
-          "post_rejected",
-          postId,
-          prev,
-        ),
-      );
+      if (!currentUserId) return;
+      void apiRejectPost(currentUserId, postId).then(() => loadState());
     },
-    [canApprovePosts, posts, currentUserId, pushNotification],
+    [currentUserId, loadState],
   );
 
   const deletePost = useCallback(
     (postId: string) => {
-      if (!canDeletePost(postId)) return;
-      setPosts((prev) => {
-        const next = prev.filter((p) => p.id !== postId);
-        savePosts(next);
-        return next;
-      });
-      // Cascade: remove likes and comments on the deleted post
-      setLikes((prev) => {
-        const next = prev.filter((l) => l.postId !== postId);
-        saveLikes(next);
-        return next;
-      });
-      setComments((prev) => {
-        const next = prev.filter((c) => c.postId !== postId);
-        saveComments(next);
-        return next;
-      });
+      if (!currentUserId) return;
+      void apiDeletePost(currentUserId, postId).then(() => loadState());
     },
-    [canDeletePost],
+    [currentUserId, loadState],
   );
 
   const pinPost = useCallback(
     (postId: string) => {
-      if (!canPinContent()) return;
-      setPosts((prev) => {
-        const next = prev.map((p) =>
-          p.id === postId ? { ...p, pinned: true } : p,
-        );
-        savePosts(next);
-        return next;
-      });
+      if (!currentUserId) return;
+      void apiPinPost(currentUserId, postId).then(() => loadState());
     },
-    [canPinContent],
+    [currentUserId, loadState],
   );
 
   const unpinPost = useCallback(
     (postId: string) => {
-      if (!canPinContent()) return;
-      setPosts((prev) => {
-        const next = prev.map((p) =>
-          p.id === postId ? { ...p, pinned: false } : p,
-        );
-        savePosts(next);
-        return next;
-      });
+      if (!currentUserId) return;
+      void apiUnpinPost(currentUserId, postId).then(() => loadState());
     },
-    [canPinContent],
+    [currentUserId, loadState],
   );
 
   // ---- Like mutations ----
@@ -619,50 +470,30 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const likePost = useCallback(
     (postId: string) => {
       if (!currentUserId) return;
-      if (academy.isPaused(currentUserId)) return;
-      if (isLiked(postId)) return;
-      const post = posts.find((p) => p.id === postId);
+      // Optimistic update: add the like locally before the server responds.
       setLikes((prev) => {
-        const next = [...prev, { userId: currentUserId, postId }];
-        saveLikes(next);
-        return next;
+        if (prev.some((l) => l.postId === postId && l.userId === currentUserId)) {
+          return prev;
+        }
+        return [...prev, { userId: currentUserId, postId }];
       });
-      // Notify post author; dedupe: skip if an unread 'like' from this actor already exists for this post
-      if (post) {
-        setNotifications((prev) => {
-          const alreadyNotified = prev.some(
-            (n) =>
-              n.type === "like" &&
-              n.actorId === currentUserId &&
-              n.postId === postId &&
-              !n.read,
-          );
-          if (alreadyNotified) return prev;
-          return pushNotification(
-            post.authorId,
-            currentUserId,
-            "like",
-            postId,
-            prev,
-          );
-        });
-      }
+      void apiLikePost(currentUserId, postId).then(() => loadState());
     },
-    [currentUserId, academy, isLiked, posts, pushNotification],
+    [currentUserId, loadState],
   );
 
   const unlikePost = useCallback(
     (postId: string) => {
       if (!currentUserId) return;
-      setLikes((prev) => {
-        const next = prev.filter(
+      // Optimistic update: remove the like locally before the server responds.
+      setLikes((prev) =>
+        prev.filter(
           (l) => !(l.postId === postId && l.userId === currentUserId),
-        );
-        saveLikes(next);
-        return next;
-      });
+        ),
+      );
+      void apiUnlikePost(currentUserId, postId).then(() => loadState());
     },
-    [currentUserId],
+    [currentUserId, loadState],
   );
 
   // ---- Comment mutations ----
@@ -670,73 +501,34 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const addComment = useCallback(
     (postId: string, body: string): Comment | null => {
       if (!currentUserId) return null;
-      if (academy.isPaused(currentUserId)) return null;
-      const targetPost = posts.find((p) => p.id === postId);
-      if (!targetPost || targetPost.status !== "approved") return null;
-      const trimmedBody = body.slice(0, 500);
-      if (!trimmedBody.trim()) return null;
-      const comment: Comment = {
-        id: genId("comment"),
-        postId,
-        authorId: currentUserId,
-        body: trimmedBody,
-        pinned: false,
-        createdAt: new Date().toISOString(),
-      };
-      setComments((prev) => {
-        const next = [...prev, comment];
-        saveComments(next);
-        return next;
-      });
-      // Notify post author
-      setNotifications((prev) => {
-        return pushNotification(
-          targetPost.authorId,
-          currentUserId,
-          "comment",
-          postId,
-          prev,
-        );
-      });
-      return comment;
+      void apiAddComment(currentUserId, postId, body).then(() => loadState());
+      return null;
     },
-    [currentUserId, academy, posts, pushNotification],
+    [currentUserId, loadState],
   );
 
   const deleteComment = useCallback(
     (commentId: string) => {
-      if (!canDeleteComment(commentId)) return;
-      setComments((prev) => {
-        const next = prev.filter((c) => c.id !== commentId);
-        saveComments(next);
-        return next;
-      });
+      if (!currentUserId) return;
+      void apiDeleteComment(currentUserId, commentId).then(() => loadState());
     },
-    [canDeleteComment],
-  );
-
-  const setPinComment = useCallback(
-    (commentId: string, pinned: boolean) => {
-      if (!canPinContent()) return;
-      setComments((prev) => {
-        const next = prev.map((c) =>
-          c.id === commentId ? { ...c, pinned } : c,
-        );
-        saveComments(next);
-        return next;
-      });
-    },
-    [canPinContent],
+    [currentUserId, loadState],
   );
 
   const pinComment = useCallback(
-    (commentId: string) => setPinComment(commentId, true),
-    [setPinComment],
+    (commentId: string) => {
+      if (!currentUserId) return;
+      void apiPinComment(currentUserId, commentId).then(() => loadState());
+    },
+    [currentUserId, loadState],
   );
 
   const unpinComment = useCallback(
-    (commentId: string) => setPinComment(commentId, false),
-    [setPinComment],
+    (commentId: string) => {
+      if (!currentUserId) return;
+      void apiUnpinComment(currentUserId, commentId).then(() => loadState());
+    },
+    [currentUserId, loadState],
   );
 
   // ---- Follow mutations ----
@@ -754,36 +546,17 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const follow = useCallback(
     (userId: string) => {
       if (!currentUserId || userId === currentUserId) return;
-      if (isFollowing(userId)) return;
-      setFollows((prev) => {
-        const next = [
-          ...prev,
-          { followerId: currentUserId, followeeId: userId },
-        ];
-        saveFollows(next);
-        return next;
-      });
-      // Notify the user being followed
-      setNotifications((prev) => {
-        return pushNotification(userId, currentUserId, "follow", null, prev);
-      });
+      void apiFollow(currentUserId, userId).then(() => loadState());
     },
-    [currentUserId, isFollowing, pushNotification],
+    [currentUserId, loadState],
   );
 
   const unfollow = useCallback(
     (userId: string) => {
       if (!currentUserId) return;
-      setFollows((prev) => {
-        const next = prev.filter(
-          (f) =>
-            !(f.followerId === currentUserId && f.followeeId === userId),
-        );
-        saveFollows(next);
-        return next;
-      });
+      void apiUnfollow(currentUserId, userId).then(() => loadState());
     },
-    [currentUserId],
+    [currentUserId, loadState],
   );
 
   const followerCount = useCallback(
@@ -802,34 +575,18 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
   const setGlobalApproval = useCallback(
     (value: boolean) => {
-      if (!canManageApproval()) return;
-      setSettingsState((prev) => {
-        const next = { ...prev, globalApproval: value };
-        saveCommunitySettings(next);
-        return next;
-      });
+      if (!currentUserId) return;
+      void apiSetGlobalApproval(currentUserId, value).then(() => loadState());
     },
-    [canManageApproval],
+    [currentUserId, loadState],
   );
 
   const setAutoApprove = useCallback(
     (userId: string, enabled: boolean) => {
-      if (!canManageApproval()) return;
-      setSettingsState((prev) => {
-        const ids = prev.autoApproveUserIds;
-        const next = {
-          ...prev,
-          autoApproveUserIds: enabled
-            ? ids.includes(userId)
-              ? ids
-              : [...ids, userId]
-            : ids.filter((id) => id !== userId),
-        };
-        saveCommunitySettings(next);
-        return next;
-      });
+      if (!currentUserId) return;
+      void apiSetAutoApprove(currentUserId, userId, enabled).then(() => loadState());
     },
-    [canManageApproval],
+    [currentUserId, loadState],
   );
 
   // ---- Mod management (admin only) ----
@@ -846,53 +603,26 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
   const promoteMod = useCallback(
     (userId: string) => {
-      if (roleOf(currentUserId) !== "admin") return;
-      setModsState((prev) => {
-        const next = {
-          ...prev,
-          [userId]: {
-            canApprovePosts: false,
-            canDeletePosts: false,
-            canDeleteComments: false,
-            canPinContent: false,
-            canManageApproval: false,
-          },
-        };
-        saveMods(next);
-        return next;
-      });
+      if (!currentUserId) return;
+      void apiPromoteMod(currentUserId, userId).then(() => loadState());
     },
-    [currentUserId, roleOf],
+    [currentUserId, loadState],
   );
 
   const demoteMod = useCallback(
     (userId: string) => {
-      if (roleOf(currentUserId) !== "admin") return;
-      setModsState((prev) => {
-        const next = { ...prev };
-        delete next[userId];
-        saveMods(next);
-        return next;
-      });
+      if (!currentUserId) return;
+      void apiDemoteMod(currentUserId, userId).then(() => loadState());
     },
-    [currentUserId, roleOf],
+    [currentUserId, loadState],
   );
 
   const setModPermission = useCallback(
     (userId: string, key: keyof ModPermissions, value: boolean) => {
-      if (roleOf(currentUserId) !== "admin") return;
-      setModsState((prev) => {
-        const existing = prev[userId];
-        if (!existing) return prev;
-        const next = {
-          ...prev,
-          [userId]: { ...existing, [key]: value },
-        };
-        saveMods(next);
-        return next;
-      });
+      if (!currentUserId) return;
+      void apiSetModPermission(currentUserId, userId, key, value).then(() => loadState());
     },
-    [currentUserId, roleOf],
+    [currentUserId, loadState],
   );
 
   // ---- Analytics ----
@@ -984,27 +714,19 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
   const markNotificationRead = useCallback(
     (id: string) => {
-      setNotifications((prev) => {
-        const next = prev.map((n) => (n.id === id ? { ...n, read: true } : n));
-        saveNotifications(next);
-        return next;
-      });
+      if (!currentUserId) return;
+      void apiMarkNotificationRead(currentUserId, id).then(() => loadState());
     },
-    [],
+    [currentUserId, loadState],
   );
 
   const markAllNotificationsRead = useCallback(
     (userId?: string) => {
       const uid = userId ?? currentUserId;
-      setNotifications((prev) => {
-        const next = prev.map((n) =>
-          n.recipientId === uid ? { ...n, read: true } : n,
-        );
-        saveNotifications(next);
-        return next;
-      });
+      if (!uid) return;
+      void apiMarkAllNotificationsRead(uid).then(() => loadState());
     },
-    [currentUserId],
+    [currentUserId, loadState],
   );
 
   // ---- Post lookup ----
@@ -1018,64 +740,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
   const purgeUser = useCallback(
     (userId: string) => {
-      // Compute deleted post IDs once from the current posts state so all
-      // subsequent setters use the same consistent set (React batches state
-      // updates, but each setter receives the latest prev for its own slice).
-      const deletedPostIds = new Set(
-        posts.filter((p) => p.authorId === userId).map((p) => p.id),
-      );
-
-      setPosts((prev) => {
-        const next = prev.filter((p) => p.authorId !== userId);
-        savePosts(next);
-        return next;
-      });
-      setComments((prev) => {
-        const next = prev.filter(
-          (c) => c.authorId !== userId && !deletedPostIds.has(c.postId),
-        );
-        saveComments(next);
-        return next;
-      });
-      setLikes((prev) => {
-        const next = prev.filter(
-          (l) => l.userId !== userId && !deletedPostIds.has(l.postId),
-        );
-        saveLikes(next);
-        return next;
-      });
-      setFollows((prev) => {
-        const next = prev.filter(
-          (f) => f.followerId !== userId && f.followeeId !== userId,
-        );
-        saveFollows(next);
-        return next;
-      });
-      setModsState((prev) => {
-        const next = { ...prev };
-        delete next[userId];
-        saveMods(next);
-        return next;
-      });
-      setSettingsState((prev) => {
-        const next = {
-          ...prev,
-          autoApproveUserIds: prev.autoApproveUserIds.filter(
-            (id) => id !== userId,
-          ),
-        };
-        saveCommunitySettings(next);
-        return next;
-      });
-      setNotifications((prev) => {
-        const next = prev.filter(
-          (n) => n.recipientId !== userId && n.actorId !== userId,
-        );
-        saveNotifications(next);
-        return next;
-      });
+      if (!currentUserId) return;
+      void apiPurgeUser(currentUserId, userId).then(() => loadState());
     },
-    [posts],
+    [currentUserId, loadState],
   );
 
   // ---- Gamification ----

@@ -5,11 +5,14 @@ import { createClient } from "@supabase/supabase-js";
 // client component; use it only in server actions, route handlers, or server
 // components. SUPABASE_SECRET_KEY is not prefixed NEXT_PUBLIC, so Next never
 // bundles it into client code.
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 
 export function createAdminClient() {
   if (typeof window !== "undefined") {
     throw new Error("createAdminClient must only be used on the server.");
+  }
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_URL is not set.");
   }
   const secretKey = process.env.SUPABASE_SECRET_KEY;
   if (!secretKey) {
