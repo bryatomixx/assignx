@@ -268,18 +268,19 @@ function VolumeControl({
  *   - YouTubeClipPlayer:   uses useYouTubePlayer (real IFrame API)
  *
  * Both sub-components receive all the props they need to render the full UI
- * (overlays, mini-player, progress bar). This avoids conditional hook calls
+ * (overlays, floating player, progress bar). This avoids conditional hook calls
  * because each sub-component always calls exactly one hook. React re-mounts
  * the sub-component when currentClipIndex changes (via the "key" prop on the
  * sub-component), giving each clip a fresh hook instance.
  *
- * MINI-PLAYER (PiP) WITH YOUTUBE:
- *   The mini-player renders via portal (createPortal to document.body) and
- *   shows the module gradient + controls. We do NOT reparent the YouTube
- *   iframe -- doing so destroys and recreates it (iframe reload). Instead the
- *   iframe stays in the inline player container (even when it scrolls off
- *   screen); the mini-player gradient surface shows playback controls that
- *   call play/pause on the hidden iframe. This is the preferred strategy.
+ * FLOATING PLAYER (Technique B - portal + placeholder):
+ *   The player surface is rendered once via createPortal to document.body,
+ *   escaping the ancestor motion.div that applies transform: translateY(...).
+ *   A placeholder div in the normal flow reserves the space.
+ *   The surface uses position:fixed and tracks the placeholder rect on scroll
+ *   (docked mode) or snaps to bottom-right (floating mode).
+ *   The YouTube iframe host div lives INSIDE the portal surface and is NEVER
+ *   moved, remounted, or conditionally rendered -- so the iframe never reloads.
  *
  * AUTOPLAY ON AUTO-ADVANCE:
  *   The initial play is always a user gesture, granting browser autoplay
@@ -412,86 +413,111 @@ function ModuleEndOverlay({ moduleSlug }: { moduleSlug: string }) {
   );
 }
 
-// ---- Mini player ----
-function MiniPlayer({
-  clipTitle,
-  accent,
+// ---- Rect tracked by the portal surface ----
+interface SurfaceRect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+// ---- Shared player surface content ----
+// Renders overlays, controls, iframe host, etc.
+// Used by both the docked and floating states -- same markup, same refs.
+function PlayerSurface({
+  clip,
+  clips,
+  currentClipIndex,
+  module,
+  moduleSlug,
+  upNextTitle,
+  isYouTube,
+  youtubeHostRef,
+  countdownSec,
+  isPlaying,
+  countdownActive,
   pct,
   elapsed,
   durationSec,
-  isPlaying,
-  isYouTube,
-  countdownActive,
-  countdownSec,
   countdownTotal,
-  nextTitle,
+  showModuleEnd,
   svgId,
+  reduced,
+  isFloating,
   onToggle,
+  onPlayNow,
+  onCancel,
   onClose,
   onReturn,
-  onPlayNow,
-  onCancelCountdown,
   onSeek,
   volume,
   muted,
   onSetVolume,
   onToggleMute,
-  posterUrl,
-  reduced,
 }: {
-  clipTitle: string;
-  accent: string;
+  clip: Clip;
+  clips: Clip[];
+  currentClipIndex: number;
+  module: Module;
+  moduleSlug: string;
+  upNextTitle: string | null;
+  isYouTube: boolean;
+  youtubeHostRef?: React.RefObject<HTMLDivElement | null>;
+  countdownSec: number;
+  isPlaying: boolean;
+  countdownActive: boolean;
   pct: number;
   elapsed: number;
   durationSec: number;
-  isPlaying: boolean;
-  isYouTube: boolean;
-  countdownActive: boolean;
-  countdownSec: number;
   countdownTotal: number;
-  nextTitle: string | null;
+  showModuleEnd: boolean;
   svgId: string;
+  reduced: boolean;
+  isFloating: boolean;
   onToggle: () => void;
+  onPlayNow: () => void;
+  onCancel: () => void;
   onClose: () => void;
   onReturn: () => void;
-  onPlayNow: () => void;
-  onCancelCountdown: () => void;
   onSeek: (seconds: number) => void;
   volume: number;
   muted: boolean;
   onSetVolume: (v: number) => void;
   onToggleMute: () => void;
-  posterUrl?: string;
-  reduced: boolean;
 }) {
   return (
-    <motion.div
-      role="region"
-      aria-label={`Mini player: ${clipTitle}`}
-      initial={reduced ? { opacity: 1 } : { opacity: 0, y: 20 }}
-      animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
-      exit={reduced ? { opacity: 0 } : { opacity: 0, y: 20 }}
-      transition={{ duration: 0.25, ease: "easeOut" }}
-      className={cn(
-        "fixed z-50 overflow-hidden shadow-2xl",
-        "bottom-0 left-0 right-0 rounded-t-2xl",
-        "sm:bottom-5 sm:right-5 sm:left-auto sm:w-[340px] sm:rounded-2xl",
+    <div className="relative w-full h-full overflow-hidden rounded-3xl border border-line">
+      {/* Background gradient */}
+      <div
+        className="absolute inset-0 opacity-95"
+        style={{ backgroundImage: module.accent }}
+      />
+      <div className="absolute inset-0 bg-black/20" />
+
+      {/* YouTube iframe host. YT.Player attaches here. NEVER moved or remounted. */}
+      {isYouTube && youtubeHostRef && (
+        <div
+          ref={youtubeHostRef}
+          className="absolute inset-0 z-0 [&_iframe]:!absolute [&_iframe]:!inset-0 [&_iframe]:!h-full [&_iframe]:!w-full [&_iframe]:border-0"
+          aria-label="YouTube video player"
+        />
       )}
-      style={{ backgroundImage: accent }}
-    >
-      <div className="relative aspect-video bg-black/20">
-        {posterUrl && (
-          <>
-            <img
-              src={posterUrl}
-              alt=""
-              aria-hidden="true"
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-            <div className="absolute inset-0 bg-black/35" />
-          </>
-        )}
-        <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-2 pt-1.5 pb-3 bg-gradient-to-b from-black/40 to-transparent">
+
+      {/* Branded cover over the YouTube iframe while paused or idle. Hides
+          YouTube native overlay so there is only one set of controls. */}
+      {isYouTube && !isPlaying && (
+        <div className="absolute inset-0 z-[5]" aria-hidden="true">
+          <div
+            className="absolute inset-0 opacity-95"
+            style={{ backgroundImage: module.accent }}
+          />
+          <div className="absolute inset-0 bg-black/20" />
+        </div>
+      )}
+
+      {/* Floating mode: top bar with expand and close */}
+      {isFloating && (
+        <div className="absolute inset-x-0 top-0 z-10 flex items-center px-2 pt-1.5 pb-3 bg-gradient-to-b from-black/50 to-transparent">
           <button
             onClick={onReturn}
             aria-label="Return to player"
@@ -499,67 +525,89 @@ function MiniPlayer({
           >
             <Maximize2 className="h-4 w-4" />
           </button>
-          <p className="flex-1 mx-1 text-xs font-medium text-white/90 truncate">{clipTitle}</p>
+          <p className="flex-1 mx-1 text-xs font-medium text-white/90 truncate">{clip.title}</p>
           <button
             onClick={onClose}
-            aria-label="Close mini player"
+            aria-label="Close player"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white hover:bg-white/20 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
+      )}
 
-        <div className="absolute inset-0 flex items-center justify-center px-4">
-          {countdownActive && nextTitle ? (
-            <div className="flex items-center gap-3">
-              <CountdownRing
-                sec={countdownSec} total={countdownTotal}
-                svgId={`${svgId}-mini`} reduced={reduced}
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] text-white/60 uppercase tracking-wider">Up next</p>
-                <p className="text-xs font-medium text-white truncate">{nextTitle}</p>
-                <div className="flex gap-2 mt-1.5">
-                  <button
-                    onClick={onPlayNow}
-                    className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
-                  >
-                    Play now
-                  </button>
-                  <button
-                    onClick={onCancelCountdown}
-                    className="text-[11px] px-2.5 py-1 rounded-md text-white/70 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={onToggle}
-              aria-label={isPlaying ? "Pause" : "Play"}
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 backdrop-blur hover:bg-white/30 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
-            >
-              {isPlaying ? (
-                <Pause className="h-5 w-5" fill="white" stroke="white" />
-              ) : (
-                <Play className="h-5 w-5 translate-x-0.5" fill="white" stroke="none" />
-              )}
-            </button>
+      {/* Play/pause button (shown when not in countdown and not floating with active countdown) */}
+      {!countdownActive && (
+        <button
+          onClick={onToggle}
+          aria-label={isPlaying ? "Pause" : "Play"}
+          className={cn(
+            "relative z-10 flex items-center justify-center rounded-full bg-white/20 backdrop-blur transition-transform hover:scale-105 active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white",
+            isFloating ? "h-12 w-12" : "h-16 w-16",
           )}
-        </div>
+        >
+          {isPlaying ? (
+            <Pause className={cn(isFloating ? "h-5 w-5" : "h-7 w-7")} fill="white" stroke="white" />
+          ) : (
+            <Play className={cn(isFloating ? "h-5 w-5 translate-x-0.5" : "h-7 w-7 translate-x-0.5")} fill="white" stroke="none" />
+          )}
+        </button>
+      )}
 
-        {/* Seek bar + volume row at the bottom of the mini-player */}
-        <div className="absolute inset-x-0 bottom-0 pb-1.5 pt-0.5 flex items-center gap-1">
+      {/* Countdown mini controls (floating mode) */}
+      {isFloating && countdownActive && upNextTitle && (
+        <div className="relative z-10 flex items-center gap-3 px-3">
+          <CountdownRing
+            sec={countdownSec} total={countdownTotal}
+            svgId={`${svgId}-float`} reduced={reduced}
+          />
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] text-white/60 uppercase tracking-wider">Up next</p>
+            <p className="text-xs font-medium text-white truncate">{upNextTitle}</p>
+            <div className="flex gap-2 mt-1.5">
+              <button
+                onClick={onPlayNow}
+                className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+              >
+                Play now
+              </button>
+              <button
+                onClick={onCancel}
+                className="text-[11px] px-2.5 py-1 rounded-md text-white/70 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom controls row */}
+      <div className={cn(
+        "absolute bottom-0 inset-x-0 z-10 flex flex-col gap-0 bg-gradient-to-t from-black/60 to-transparent",
+        isFloating ? "pb-1.5 pt-0.5" : "pb-2 pt-8",
+      )}>
+        {!isFloating && (
+          <div className="flex items-center gap-2 px-3 pb-0.5">
+            {isYouTube && (
+              <VolumeControl
+                volume={volume}
+                muted={muted}
+                onSetVolume={onSetVolume}
+                onToggleMute={onToggleMute}
+              />
+            )}
+          </div>
+        )}
+        <div className="flex items-center gap-1">
           <SeekBar
             elapsed={elapsed}
             durationSec={durationSec}
             pct={pct}
             onSeek={onSeek}
-            compact
+            compact={isFloating}
           />
-          {isYouTube && (
+          {isFloating && isYouTube && (
             <div className="shrink-0 pr-1">
               <VolumeControl
                 volume={volume}
@@ -572,160 +620,9 @@ function MiniPlayer({
           )}
         </div>
       </div>
-    </motion.div>
-  );
-}
 
-// ---- Shared player UI used by both SimulatedClipPlayer and YouTubeClipPlayer ----
-// Receives all state/callbacks from the outer shell, which owns the
-// progress-tracking, autoadvance, and mini-player logic.
-function PlayerUI({
-  clip,
-  clips,
-  currentClipIndex,
-  module,
-  moduleSlug,
-  next,
-  upNextTitle,
-  isYouTube,
-  youtubeHostRef,
-  // player state
-  countdownSec,
-  isPlaying,
-  countdownActive,
-  pct,
-  elapsed,
-  durationSec,
-  countdownTotal,
-  showModuleEnd,
-  showLessonCancelledEnd,
-  showMini,
-  portalMounted,
-  svgId,
-  reduced,
-  // handlers
-  onToggle,
-  onPlayNow,
-  onCancel,
-  onMiniClose,
-  onMiniReturn,
-  onSeek,
-  volume,
-  muted,
-  onSetVolume,
-  onToggleMute,
-  // intersection ref
-  inlinePlayerRef,
-}: {
-  clip: Clip;
-  clips: Clip[];
-  currentClipIndex: number;
-  module: Module;
-  moduleSlug: string;
-  next: Lesson | null;
-  upNextTitle: string | null;
-  isYouTube: boolean;
-  youtubeHostRef?: React.RefObject<HTMLDivElement | null>;
-  countdownSec: number;
-  isPlaying: boolean;
-  countdownActive: boolean;
-  pct: number;
-  elapsed: number;
-  durationSec: number;
-  countdownTotal: number;
-  showModuleEnd: boolean;
-  showLessonCancelledEnd: boolean;
-  showMini: boolean;
-  portalMounted: boolean;
-  svgId: string;
-  reduced: boolean;
-  onToggle: () => void;
-  onPlayNow: () => void;
-  onCancel: () => void;
-  onMiniClose: () => void;
-  onMiniReturn: () => void;
-  onSeek: (seconds: number) => void;
-  volume: number;
-  muted: boolean;
-  onSetVolume: (v: number) => void;
-  onToggleMute: () => void;
-  inlinePlayerRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  return (
-    <>
-      {/* ---- Inline player ---- */}
-      <div
-        ref={inlinePlayerRef}
-        className="relative flex aspect-video items-center justify-center overflow-hidden rounded-3xl border border-line"
-      >
-        {/* Background gradient (always shown; for YouTube it sits behind the iframe) */}
-        <div
-          className="absolute inset-0 opacity-95"
-          style={{ backgroundImage: module.accent }}
-        />
-        <div className="absolute inset-0 bg-black/20" />
-
-        {/* YouTube iframe host -- the YT.Player attaches here and must NOT be moved */}
-        {isYouTube && youtubeHostRef && (
-          <div
-            ref={youtubeHostRef}
-            className="absolute inset-0 z-0 [&_iframe]:!absolute [&_iframe]:!inset-0 [&_iframe]:!h-full [&_iframe]:!w-full [&_iframe]:border-0"
-            aria-label="YouTube video player"
-          />
-        )}
-
-        {/* Branded cover over the YouTube iframe while paused or idle. YouTube
-            shows its own pause overlay (center button, suggested videos, logo)
-            that cannot be hidden via CSS on a cross-origin iframe. Covering it
-            with the module gradient means only our single control shows, so the
-            play/pause buttons no longer double up. While playing, the cover is
-            gone and the real video is visible. */}
-        {isYouTube && !isPlaying && (
-          <div className="absolute inset-0 z-[5]" aria-hidden="true">
-            <div
-              className="absolute inset-0 opacity-95"
-              style={{ backgroundImage: module.accent }}
-            />
-            <div className="absolute inset-0 bg-black/20" />
-          </div>
-        )}
-
-        {/* Play/pause button (shown when not in countdown) */}
-        {!countdownActive && (
-          <button
-            onClick={onToggle}
-            aria-label={isPlaying ? "Pause" : "Play"}
-            className="relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-white/20 backdrop-blur transition-transform hover:scale-105 active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
-          >
-            {isPlaying ? (
-              <Pause className="h-7 w-7" fill="white" stroke="white" />
-            ) : (
-              <Play className="h-7 w-7 translate-x-0.5" fill="white" stroke="none" />
-            )}
-          </button>
-        )}
-
-        {/* Seekable progress bar + controls row */}
-        <div className="absolute bottom-0 inset-x-0 z-10 flex flex-col gap-0 pb-2 pt-8 bg-gradient-to-t from-black/60 to-transparent">
-          <div className="flex items-center gap-2 px-3 pb-0.5">
-            {isYouTube && (
-              <VolumeControl
-                volume={volume}
-                muted={muted}
-                onSetVolume={onSetVolume}
-                onToggleMute={onToggleMute}
-              />
-            )}
-          </div>
-          <SeekBar
-            elapsed={elapsed}
-            durationSec={durationSec}
-            pct={pct}
-            onSeek={onSeek}
-          />
-        </div>
-
-        {/* Countdown overlay */}
+      {/* Countdown overlay (docked / full size) */}
+      {!isFloating && (
         <AnimatePresence>
           {countdownActive && upNextTitle && (
             <motion.div
@@ -748,24 +645,26 @@ function PlayerUI({
             </motion.div>
           )}
         </AnimatePresence>
+      )}
 
-        {/* Module-end overlay */}
-        <AnimatePresence>
-          {showModuleEnd && (
-            <motion.div
-              key="module-end"
-              initial={reduced ? { opacity: 1 } : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="absolute inset-0 z-20"
-            >
-              <ModuleEndOverlay moduleSlug={moduleSlug} />
-            </motion.div>
-          )}
-        </AnimatePresence>
+      {/* Module-end overlay */}
+      <AnimatePresence>
+        {showModuleEnd && (
+          <motion.div
+            key="module-end"
+            initial={reduced ? { opacity: 1 } : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="absolute inset-0 z-20"
+          >
+            <ModuleEndOverlay moduleSlug={moduleSlug} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-        {/* Now-playing label + topic counter (sits above the seek bar area) */}
+      {/* Now-playing label (docked only -- no room in floating) */}
+      {!isFloating && (
         <div className="absolute bottom-14 left-4 right-4 z-10 flex items-end justify-between pointer-events-none">
           <div className="max-w-[70%]">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-white/60 leading-none mb-0.5">
@@ -781,85 +680,17 @@ function PlayerUI({
             </p>
           )}
         </div>
+      )}
 
-        {/* YouTube source badge */}
-        {isYouTube && (
-          <div className="absolute top-3 right-3 z-10 pointer-events-none">
-            <span className="rounded-md bg-black/50 px-2 py-0.5 text-[10px] font-semibold text-white/70 backdrop-blur">
-              YouTube
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Lesson-complete banner: Cancel on last clip, next lesson exists */}
-      <AnimatePresence>
-        {showLessonCancelledEnd && (
-          <motion.div
-            key="lesson-complete"
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className="mt-3 flex items-center gap-3 rounded-xl border border-line bg-white px-4 py-3 text-sm text-ink-700"
-          >
-            <span className="font-medium">Lesson complete.</span>
-            <a
-              href={`/classroom/${moduleSlug}/${next!.id}`}
-              className="ml-auto font-semibold text-brand-500 hover:underline whitespace-nowrap"
-            >
-              Next lesson: {next!.title}
-            </a>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ---- Mini-player portal ---- */}
-      {portalMounted &&
-        createPortal(
-          <>
-            <div aria-live="polite" aria-atomic="true" className="sr-only">
-              {showMini ? `Mini player active: ${clip.title}` : ""}
-            </div>
-            <AnimatePresence>
-              {showMini && (
-                <MiniPlayer
-                  key="mini"
-                  clipTitle={clip.title}
-                  accent={module.accent}
-                  posterUrl={
-                    isYouTube && clip.videoId
-                      ? `https://i.ytimg.com/vi/${clip.videoId}/hqdefault.jpg`
-                      : undefined
-                  }
-                  pct={pct}
-                  elapsed={elapsed}
-                  durationSec={durationSec}
-                  isPlaying={isPlaying}
-                  isYouTube={isYouTube}
-                  countdownActive={countdownActive}
-                  countdownSec={countdownSec}
-                  countdownTotal={countdownTotal}
-                  nextTitle={upNextTitle}
-                  svgId={svgId}
-                  onToggle={onToggle}
-                  onClose={onMiniClose}
-                  onReturn={onMiniReturn}
-                  onPlayNow={onPlayNow}
-                  onCancelCountdown={onCancel}
-                  onSeek={onSeek}
-                  volume={volume}
-                  muted={muted}
-                  onSetVolume={onSetVolume}
-                  onToggleMute={onToggleMute}
-                  reduced={reduced}
-                />
-              )}
-            </AnimatePresence>
-          </>,
-          document.body,
-        )}
-    </>
+      {/* YouTube source badge */}
+      {isYouTube && (
+        <div className="absolute top-3 right-3 z-10 pointer-events-none">
+          <span className="rounded-md bg-black/50 px-2 py-0.5 text-[10px] font-semibold text-white/70 backdrop-blur">
+            YouTube
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -875,6 +706,145 @@ interface ClipSubProps {
   onClipWatched: (i: number) => void;
   /** Whether this clip auto-started (from a previous lesson's "Play now" or auto-advance). */
   shouldAutoplay: boolean;
+}
+
+// ---- useFloatingPlayer hook ----
+// Manages the portal-based floating/docked behaviour (Technique B).
+// placeholderRef: the div in normal flow that reserves space.
+// Returns: portalMounted, docked, floating, surfaceStyle, and event handlers.
+function useFloatingPlayer() {
+  const [portalMounted, setPortalMounted] = useState(false);
+  const [docked, setDocked] = useState(true);
+  const [closed, setClosed] = useState(false);
+  // surfaceRect tracks the placeholder's position relative to the viewport
+  const [surfaceRect, setSurfaceRect] = useState<SurfaceRect>({ top: 0, left: 0, width: 0, height: 0 });
+  const placeholderRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setPortalMounted(true); }, []);
+
+  // Measure placeholder rect and push to state. Called on every scroll frame
+  // when docked, and once when switching modes.
+  const measureRect = useCallback(() => {
+    const el = placeholderRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setSurfaceRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+  }, []);
+
+  // Scroll listener: update rect every animation frame (passive, no jitter).
+  useEffect(() => {
+    if (!docked) return; // only needed while docked
+    const onScroll = () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        measureRect();
+        rafRef.current = null;
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    // Measure immediately on mount / mode change
+    measureRect();
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [docked, measureRect]);
+
+  // ResizeObserver: re-measure when placeholder size changes
+  useEffect(() => {
+    const el = placeholderRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => { measureRect(); });
+    ro.observe(el);
+    measureRect();
+    return () => ro.disconnect();
+  }, [measureRect]);
+
+  // closedRef keeps a stable reference to the current closed value so the
+  // IntersectionObserver callback never captures a stale closure.
+  const closedRef = useRef(closed);
+  useEffect(() => { closedRef.current = closed; }, [closed]);
+
+  // IntersectionObserver: switch between docked/floating.
+  // Reads closedRef (not closed) so it never needs to be re-registered on
+  // closed changes, avoiding unnecessary disconnect/reconnect cycles.
+  useEffect(() => {
+    const el = placeholderRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const visible = entry.isIntersecting && entry.intersectionRatio >= 0.2;
+        if (visible) {
+          setDocked(true);
+          setClosed(false);
+        } else if (!closedRef.current) {
+          setDocked(false);
+        }
+      },
+      { threshold: [0, 0.2] },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  // placeholderRef is a stable ref object. closedRef is stable. Empty deps = mount only.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleClose = useCallback(() => {
+    setClosed(true);
+    setDocked(false);
+  }, []);
+
+  const handleReturn = useCallback(() => {
+    setClosed(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  // Build the CSS style for the portal surface.
+  // Docked: follows the placeholder exactly (no transition while scrolling).
+  // Floating: snaps to bottom-right with CSS transition.
+  const isVisible = docked || (!closed && !docked);
+  const isFloating = !docked && !closed;
+
+  const surfaceStyle: React.CSSProperties = docked
+    ? {
+        position: "fixed",
+        top: surfaceRect.top,
+        left: surfaceRect.left,
+        width: surfaceRect.width,
+        height: surfaceRect.height,
+        zIndex: 40,
+        borderRadius: "1.5rem", // rounded-3xl
+        transition: "none",
+      }
+    : {
+        position: "fixed",
+        bottom: 20,
+        right: 20,
+        top: "auto",
+        left: "auto",
+        width: "clamp(280px, 30vw, 360px)",
+        height: "auto",
+        aspectRatio: "16/9",
+        zIndex: 50,
+        borderRadius: "1rem",
+        transition: "width 0.3s ease, bottom 0.3s ease, right 0.3s ease, border-radius 0.3s ease",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+      };
+
+  return {
+    portalMounted,
+    placeholderRef,
+    isVisible,
+    isFloating,
+    surfaceStyle,
+    handleClose,
+    handleReturn,
+  };
 }
 
 // ---- SimulatedClipPlayer ----
@@ -941,16 +911,7 @@ function SimulatedClipPlayer({
     };
   }, []);
 
-  // ---- Mini-player state ----
-  const [showMini, setShowMini] = useState(false);
-  const [miniClosed, setMiniClosed] = useState(false);
-  const [portalMounted, setPortalMounted] = useState(false);
-  const inlinePlayerRef = useRef<HTMLDivElement>(null);
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setPortalMounted(true); }, []);
-
-  // ---- Autoplay on mount (from previous lesson or clip advance) ----
+  // ---- Autoplay on mount ----
   useEffect(() => {
     if (shouldAutoplay) player.play();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -996,36 +957,28 @@ function SimulatedClipPlayer({
   }, [player, hasNextClip, currentClipIndex, onClipWatched, onClipChange, navigateToNext]);
 
   const handleCancel = useCallback(() => { cancelCountdown(); }, [cancelCountdown]);
-  const handleMiniClose = useCallback(() => { setShowMini(false); setMiniClosed(true); }, []);
-  const handleMiniReturn = useCallback(() => { window.scrollTo({ top: 0, behavior: "smooth" }); }, []);
 
-  // IntersectionObserver
-  useEffect(() => {
-    const el = inlinePlayerRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        const visible = entry.isIntersecting && entry.intersectionRatio >= 0.2;
-        if (visible) { setShowMini(false); setMiniClosed(false); }
-        else if (!miniClosed) { setShowMini(true); }
-      },
-      { threshold: [0, 0.2] },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [miniClosed]);
+  // ---- Floating player state ----
+  const {
+    portalMounted,
+    placeholderRef,
+    isVisible,
+    isFloating,
+    surfaceStyle,
+    handleClose,
+    handleReturn,
+  } = useFloatingPlayer();
 
   const showModuleEnd = state === "ended" && !hasNextClip && !next;
   const showLessonCancelledEnd = state === "ended" && !hasNextClip && !!next;
 
-  return (
-    <PlayerUI
+  const surface = (
+    <PlayerSurface
       clip={clip}
       clips={clips}
       currentClipIndex={currentClipIndex}
       module={module}
       moduleSlug={moduleSlug}
-      next={next}
       upNextTitle={upNextTitle}
       isYouTube={false}
       countdownSec={countdownSec}
@@ -1036,28 +989,72 @@ function SimulatedClipPlayer({
       durationSec={durationSec}
       countdownTotal={countdownTotal}
       showModuleEnd={showModuleEnd}
-      showLessonCancelledEnd={showLessonCancelledEnd}
-      showMini={showMini}
-      portalMounted={portalMounted}
       svgId={svgId}
       reduced={reduced}
+      isFloating={isFloating}
       onToggle={togglePlay}
       onPlayNow={handlePlayNow}
       onCancel={handleCancel}
-      onMiniClose={handleMiniClose}
-      onMiniReturn={handleMiniReturn}
+      onClose={handleClose}
+      onReturn={handleReturn}
       onSeek={seekTo}
       volume={volume}
       muted={muted}
       onSetVolume={setVolume}
       onToggleMute={toggleMute}
-      inlinePlayerRef={inlinePlayerRef}
     />
+  );
+
+  return (
+    <>
+      {/* Placeholder: reserves aspect-video space in the normal flow */}
+      <div ref={placeholderRef} className="aspect-video w-full" aria-hidden="true" />
+
+      {/* Portal: the single surface, mounted once, never remounted */}
+      {portalMounted && createPortal(
+        <>
+          <div aria-live="polite" aria-atomic="true" className="sr-only">
+            {isFloating ? `Floating player active: ${clip.title}` : ""}
+          </div>
+          {isVisible && (
+            <div style={surfaceStyle}>
+              {surface}
+            </div>
+          )}
+        </>,
+        document.body,
+      )}
+
+      {/* Lesson-complete banner */}
+      <AnimatePresence>
+        {showLessonCancelledEnd && (
+          <motion.div
+            key="lesson-complete"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="mt-3 flex items-center gap-3 rounded-xl border border-line bg-white px-4 py-3 text-sm text-ink-700"
+          >
+            <span className="font-medium">Lesson complete.</span>
+            <a
+              href={`/classroom/${moduleSlug}/${next!.id}`}
+              className="ml-auto font-semibold text-brand-500 hover:underline whitespace-nowrap"
+            >
+              Next lesson: {next!.title}
+            </a>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
 // ---- YouTubeClipPlayer ----
 // Always calls useYouTubePlayer. Handles all player logic for YouTube clips.
+// The YouTube iframe host (youtubeHostRef) lives INSIDE the portal surface,
+// so it is never moved in the DOM when switching between docked/floating.
+// This guarantees the iframe never reloads.
 function YouTubeClipPlayer({
   lesson,
   module,
@@ -1122,30 +1119,14 @@ function YouTubeClipPlayer({
     };
   }, []);
 
-  // ---- Mini-player state ----
-  const [showMini, setShowMini] = useState(false);
-  const [miniClosed, setMiniClosed] = useState(false);
-  const [portalMounted, setPortalMounted] = useState(false);
-  const inlinePlayerRef = useRef<HTMLDivElement>(null);
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setPortalMounted(true); }, []);
-
-  // ---- Autoplay on mount (from previous lesson) ----
-  // YouTube player is not ready immediately; we play once the API calls onReady
-  // internally. The useYouTubePlayer hook handles this via YT.Player onReady.
-  // We just need to call play() once shouldAutoplay is true.
-  // Since the player starts "idle" and transitions to "idle/paused" on ready,
-  // we store the intent in a ref and call play() after the first state update.
+  // ---- Autoplay on mount ----
   const autoplayFiredRef = useRef(false);
   useEffect(() => {
     if (!shouldAutoplay || autoplayFiredRef.current) return;
     if (state === "idle") {
-      // Player is ready and idle -- trigger play
       autoplayFiredRef.current = true;
       player.play();
     }
-  // Re-run when state changes (e.g. when YT player signals onReady -> idle)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, shouldAutoplay]);
 
@@ -1189,36 +1170,32 @@ function YouTubeClipPlayer({
   }, [player, hasNextClip, currentClipIndex, onClipWatched, onClipChange, navigateToNext]);
 
   const handleCancel = useCallback(() => { cancelCountdown(); }, [cancelCountdown]);
-  const handleMiniClose = useCallback(() => { setShowMini(false); setMiniClosed(true); }, []);
-  const handleMiniReturn = useCallback(() => { window.scrollTo({ top: 0, behavior: "smooth" }); }, []);
 
-  // IntersectionObserver
-  useEffect(() => {
-    const el = inlinePlayerRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        const visible = entry.isIntersecting && entry.intersectionRatio >= 0.2;
-        if (visible) { setShowMini(false); setMiniClosed(false); }
-        else if (!miniClosed) { setShowMini(true); }
-      },
-      { threshold: [0, 0.2] },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [miniClosed]);
+  // ---- Floating player state ----
+  const {
+    portalMounted,
+    placeholderRef,
+    isVisible,
+    isFloating,
+    surfaceStyle,
+    handleClose,
+    handleReturn,
+  } = useFloatingPlayer();
 
   const showModuleEnd = state === "ended" && !hasNextClip && !next;
   const showLessonCancelledEnd = state === "ended" && !hasNextClip && !!next;
 
-  return (
-    <PlayerUI
+  // The surface contains the youtubeHostRef div. It is rendered ONCE inside the
+  // portal and never unmounted by scroll/mode changes. The YT.Player (created
+  // by useYouTubePlayer) holds a reference to that DOM node and continues
+  // operating without interruption regardless of position:fixed changes.
+  const surface = (
+    <PlayerSurface
       clip={clip}
       clips={clips}
       currentClipIndex={currentClipIndex}
       module={module}
       moduleSlug={moduleSlug}
-      next={next}
       upNextTitle={upNextTitle}
       isYouTube={true}
       youtubeHostRef={youtubeHostRef}
@@ -1230,23 +1207,67 @@ function YouTubeClipPlayer({
       durationSec={effectiveDuration}
       countdownTotal={countdownTotal}
       showModuleEnd={showModuleEnd}
-      showLessonCancelledEnd={showLessonCancelledEnd}
-      showMini={showMini}
-      portalMounted={portalMounted}
       svgId={svgId}
       reduced={reduced}
+      isFloating={isFloating}
       onToggle={togglePlay}
       onPlayNow={handlePlayNow}
       onCancel={handleCancel}
-      onMiniClose={handleMiniClose}
-      onMiniReturn={handleMiniReturn}
+      onClose={handleClose}
+      onReturn={handleReturn}
       onSeek={seekTo}
       volume={volume}
       muted={muted}
       onSetVolume={setVolume}
       onToggleMute={toggleMute}
-      inlinePlayerRef={inlinePlayerRef}
     />
+  );
+
+  return (
+    <>
+      {/* Placeholder: reserves aspect-video space in the normal flow */}
+      <div ref={placeholderRef} className="aspect-video w-full" aria-hidden="true" />
+
+      {/* Portal: the single surface, mounted once, never remounted.
+          The youtubeHostRef div (and thus the YT iframe) lives here.
+          Changing position:fixed coords does NOT move the node in the React
+          tree or the DOM tree -- the browser only repaints. No iframe reload. */}
+      {portalMounted && createPortal(
+        <>
+          <div aria-live="polite" aria-atomic="true" className="sr-only">
+            {isFloating ? `Floating player active: ${clip.title}` : ""}
+          </div>
+          {isVisible && (
+            <div style={surfaceStyle}>
+              {surface}
+            </div>
+          )}
+        </>,
+        document.body,
+      )}
+
+      {/* Lesson-complete banner (in flow, below the placeholder) */}
+      <AnimatePresence>
+        {showLessonCancelledEnd && (
+          <motion.div
+            key="lesson-complete"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="mt-3 flex items-center gap-3 rounded-xl border border-line bg-white px-4 py-3 text-sm text-ink-700"
+          >
+            <span className="font-medium">Lesson complete.</span>
+            <a
+              href={`/classroom/${moduleSlug}/${next!.id}`}
+              className="ml-auto font-semibold text-brand-500 hover:underline whitespace-nowrap"
+            >
+              Next lesson: {next!.title}
+            </a>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
@@ -1271,15 +1292,11 @@ export function LessonPlayer({
   // 1. A previous lesson set AUTOPLAY_KEY in sessionStorage (lessonAutoplay state).
   // 2. currentClipIndex changed from its previous value, meaning a clip advance
   //    or manual playlist selection (clipAutoplay state).
-  //
-  // Both are regular state so they can be read and set during/after render without
-  // violating the react-hooks/refs rule.
   const [lessonAutoplay, setLessonAutoplay] = useState(false);
   const [prevClipIndex, setPrevClipIndex] = useState(currentClipIndex);
   const [clipAutoplay, setClipAutoplay] = useState(false);
 
   // Detect clip index changes during render using the React state-from-props pattern.
-  // This is the canonical way to derive state from a changing prop.
   if (prevClipIndex !== currentClipIndex) {
     setPrevClipIndex(currentClipIndex);
     setClipAutoplay(true);
@@ -1295,17 +1312,13 @@ export function LessonPlayer({
     } catch {
       // sessionStorage unavailable
     }
-   
   }, [lesson.id]);
 
-  // After the sub-component mounts with shouldAutoplay=true, reset both flags
-  // so they do not fire again on subsequent renders.
+  // After the sub-component mounts with shouldAutoplay=true, reset both flags.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (lessonAutoplay) setLessonAutoplay(false);
-     
     if (clipAutoplay) setClipAutoplay(false);
-  // Re-run when clip index changes so flags reset after the new sub-component mounts.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentClipIndex]);
 
