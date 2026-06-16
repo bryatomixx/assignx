@@ -230,12 +230,18 @@ export function AcademyProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Load academy state when the user is known (signed in or out).
+  // Load academy state only when there is a real session. On public pages
+  // (the marketing landing) a logged out visitor has no session, so calling
+  // the authenticated /api/academy/state would 401 for nothing. Mark ready so
+  // the auth guard can resolve to "logged out" without a failed request.
   useEffect(() => {
-    if (!authLoading) {
-      void loadState();
+    if (authLoading) return;
+    if (!supabaseUser) {
+      setReady(true);
+      return;
     }
-  }, [authLoading, loadState]);
+    void loadState();
+  }, [authLoading, supabaseUser, loadState]);
 
   // ---- Auth actions ----
 
