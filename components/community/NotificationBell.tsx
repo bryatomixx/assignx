@@ -180,7 +180,8 @@ export function NotificationBell() {
 
                       {/* Actor avatar */}
                       <Avatar
-                        emoji={actor?.avatar ?? "?"}
+                        emoji={actor?.avatar}
+                        name={actor?.name}
                         size="sm"
                         className="shrink-0"
                       />

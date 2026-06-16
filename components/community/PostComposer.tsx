@@ -68,7 +68,7 @@ export function PostComposer() {
   return (
     <div className="card p-4">
       <div className="flex gap-3">
-        <Avatar emoji={currentUser.avatar} />
+        <Avatar emoji={currentUser.avatar} name={currentUser.name} />
         <div className="flex-1">
           <textarea
             value={body}

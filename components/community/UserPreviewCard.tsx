@@ -112,7 +112,7 @@ export function UserPreviewCard({ userId, onClose }: UserPreviewCardProps) {
           <div className="p-5">
             {/* Header: avatar + name + badges row */}
             <div className="flex items-start gap-3">
-              <Avatar emoji={member?.avatar ?? "?"} size="lg" />
+              <Avatar emoji={member?.avatar} name={member?.name} size="lg" />
               <div className="flex-1 min-w-0 pt-1">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-base font-semibold text-ink-900 leading-tight">

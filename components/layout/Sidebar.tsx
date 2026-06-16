@@ -105,7 +105,7 @@ export function Sidebar() {
               pathname.startsWith("/profile") && "border-brand-300 bg-brand-50",
             )}
           >
-            <Avatar emoji={currentUser.avatar} />
+            <Avatar emoji={currentUser.avatar} name={currentUser.name} />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold text-ink-900">
                 {currentUser.name}

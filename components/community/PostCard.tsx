@@ -12,6 +12,8 @@ import {
   ExternalLink,
   Image as ImageIcon,
   Video,
+  Share2,
+  Check,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { RoleBadge } from "@/components/community/RoleBadge";
@@ -49,6 +51,7 @@ export function PostCard({ post }: PostCardProps) {
   const [showComments, setShowComments] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const author = users.find((u) => u.id === post.authorId);
   const role = roleOf(post.authorId);
@@ -94,10 +97,23 @@ export function PostCard({ post }: PostCardProps) {
     setMenuOpen(false);
   }
 
+  function handleShare() {
+    const text = `${post.body}\n\n${author?.name ? `Shared by ${author.name} on AssignX Academy` : "AssignX Academy"}`;
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch(() => {});
+    }
+  }
+
   return (
     <article
       className={cn(
-        "card p-5 transition-shadow",
+        "card p-5 transition-shadow hover:shadow-md",
         post.pinned && "ring-1 ring-brand-300",
       )}
     >
@@ -112,7 +128,7 @@ export function PostCard({ post }: PostCardProps) {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <Avatar emoji={author?.avatar ?? "?"} />
+          <Avatar emoji={author?.avatar} name={author?.name} />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
               <UserNameButton
@@ -272,8 +288,25 @@ export function PostCard({ post }: PostCardProps) {
         </div>
       )}
 
+      {/* Engagement summary */}
+      {(likes > 0 || comments > 0) && (
+        <div className="mt-3 flex items-center gap-3 text-xs text-ink-400">
+          {likes > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <Heart className="h-3 w-3 fill-magenta text-magenta" />
+              {likes} {likes === 1 ? "like" : "likes"}
+            </span>
+          )}
+          {comments > 0 && (
+            <span>
+              {comments} {comments === 1 ? "comment" : "comments"}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Action bar */}
-      <div className="mt-4 flex items-center gap-1">
+      <div className="mt-3 flex items-center gap-1 border-t border-line pt-2">
         {/* Like */}
         <button
           onClick={handleLike}
@@ -283,7 +316,7 @@ export function PostCard({ post }: PostCardProps) {
           title={paused ? "Reactivate your account to interact" : undefined}
           disabled={paused}
           className={cn(
-            "min-h-[44px] flex items-center gap-1.5 rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300",
+            "min-h-[44px] flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300",
             liked
               ? "text-magenta hover:bg-pink-50"
               : "text-ink-500 hover:bg-surface-2 hover:text-ink-900",
@@ -293,7 +326,7 @@ export function PostCard({ post }: PostCardProps) {
           <Heart
             className={cn("h-4 w-4", liked && "fill-magenta text-magenta")}
           />
-          {likes > 0 && <span>{likes}</span>}
+          {liked ? "Liked" : "Like"}
         </button>
 
         {/* Comment toggle */}
@@ -304,16 +337,34 @@ export function PostCard({ post }: PostCardProps) {
           aria-disabled={paused}
           title={paused ? "Reactivate your account to interact" : undefined}
           className={cn(
-            "min-h-[44px] flex items-center gap-1.5 rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300",
+            "min-h-[44px] flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300",
             showComments
               ? "bg-brand-50 text-brand-500"
               : "text-ink-500 hover:bg-surface-2 hover:text-ink-900",
           )}
         >
           <MessageCircle className="h-4 w-4" />
-          {comments > 0 && <span>{comments}</span>}
+          Comment
         </button>
 
+        {/* Share (copies the post to the clipboard) */}
+        <button
+          onClick={handleShare}
+          aria-label="Copy post to clipboard"
+          className={cn(
+            "min-h-[44px] flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300",
+            copied
+              ? "text-success"
+              : "text-ink-500 hover:bg-surface-2 hover:text-ink-900",
+          )}
+        >
+          {copied ? (
+            <Check className="h-4 w-4" />
+          ) : (
+            <Share2 className="h-4 w-4" />
+          )}
+          {copied ? "Copied" : "Share"}
+        </button>
       </div>
 
       {/* Comment thread (inline) */}

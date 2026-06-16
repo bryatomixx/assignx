@@ -134,7 +134,8 @@ export function TopContributors() {
                   <RankLabel rank={rank} />
 
                   <Avatar
-                    emoji={user?.avatar ?? "?"}
+                    emoji={user?.avatar}
+                    name={user?.name}
                     size="sm"
                     className="shrink-0"
                   />

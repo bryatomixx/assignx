@@ -62,14 +62,9 @@ export default function CommunityPage() {
 
       {/* 3-column layout: left rail (gamification), center feed, right rail
           (top contributors). On mobile everything stacks with the feed first. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)_300px] lg:items-start">
-        {/* Left rail: your progress + how to earn points */}
-        <aside className="order-2 lg:order-1 lg:sticky lg:top-6">
-          <GamificationPanel />
-        </aside>
-
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         {/* Center feed */}
-        <div className="order-1 min-w-0 lg:order-2">
+        <div className="min-w-0">
           {/* Post composer */}
           <PostComposer />
 
@@ -187,9 +182,10 @@ export default function CommunityPage() {
       </section>
         </div>
 
-        {/* Right rail: top contributors */}
-        <aside className="order-3 lg:sticky lg:top-6">
+        {/* Right rail: top contributors, with your progress below it */}
+        <aside className="flex flex-col gap-5 lg:sticky lg:top-6">
           <TopContributors />
+          <GamificationPanel />
         </aside>
       </div>
     </div>

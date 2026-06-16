@@ -101,7 +101,7 @@ export default function MemberProfilePage() {
       {/* Profile header card */}
       <div className="card p-6">
         <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
-          <Avatar emoji={member.avatar} size="lg" />
+          <Avatar emoji={member.avatar} name={member.name} size="lg" />
           <div className="flex-1">
             <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
               <h1 className="text-2xl">{member.name}</h1>

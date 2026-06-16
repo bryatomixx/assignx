@@ -77,7 +77,7 @@ export function CommentThread({ postId }: CommentThreadProps) {
                 )}
 
                 <div className="flex items-start gap-2">
-                  <Avatar emoji={author?.avatar ?? "?"} size="sm" />
+                  <Avatar emoji={author?.avatar} name={author?.name} size="sm" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <UserNameButton
@@ -156,7 +156,7 @@ export function CommentThread({ postId }: CommentThreadProps) {
 
       {/* Add comment input */}
       <div className="flex items-center gap-2">
-        {currentUser && <Avatar emoji={currentUser.avatar} size="sm" />}
+        {currentUser && <Avatar emoji={currentUser.avatar} name={currentUser.name} size="sm" />}
         <div className="flex flex-1 items-center gap-1 rounded-xl border border-line bg-white px-3 py-2 focus-within:border-brand-300 focus-within:ring-1 focus-within:ring-brand-300">
           <input
             ref={inputRef}

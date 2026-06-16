@@ -58,7 +58,7 @@ export function MobileNav() {
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300",
             )}
           >
-            <Avatar emoji={currentUser.avatar} size="sm" />
+            <Avatar emoji={currentUser.avatar} name={currentUser.name} size="sm" />
           </Link>
         )}
       </nav>
