@@ -1,4 +1,7 @@
 import type { LucideIcon } from "lucide-react";
+import type { VideoSource } from "@/lib/video";
+
+export type { VideoSource } from "@/lib/video";
 
 export type Role = "admin" | "student";
 export type Tier = "free" | "paid";
@@ -39,6 +42,46 @@ export interface LessonSection {
   bullets: Bullet[];
 }
 
+/**
+ * A task attached to a single chapter. Either a written task (text + optional
+ * checklist) or a "watch this and replicate" video task. The task lives INSIDE
+ * the chapter (Model A): there is no single homework block at the bottom of the
+ * lesson; each chapter can carry its own task.
+ */
+export interface ChapterTask {
+  type: "text" | "video";
+  /** Short instruction line, e.g. "Connect your Stripe account". */
+  title: string;
+  /** Optional longer body / steps. */
+  body?: string;
+  /** Optional checklist shown under the task (text tasks). */
+  bullets?: Bullet[];
+  /** Share/watch URL (YouTube or Loom) for video tasks. */
+  video?: string;
+}
+
+/**
+ * A chapter is the self-contained unit of a lesson: a teaching video, its own
+ * description, and its own optional task. Chapters render as the left rail
+ * ("What you'll cover"); selecting one loads its video + description + task in
+ * the main pane.
+ */
+export interface Chapter {
+  id: string;
+  title: string;
+  /** Description shown under the chapter video. */
+  description?: string;
+  /**
+   * Share/watch URL of the teaching video (YouTube or Loom). Absent -> simulated
+   * placeholder player. YouTube gets the rich player; Loom a clean native embed.
+   */
+  video?: string;
+  /** Player duration in seconds (also used by the simulated player). */
+  durationSec?: number;
+  /** Optional per-chapter task (text or video). */
+  task?: ChapterTask;
+}
+
 export interface Lesson {
   id: string;
   title: string;
@@ -46,6 +89,13 @@ export interface Lesson {
   durationMin: number;
   videoUrl: string; // placeholder for now
   content: string; // short intro / summary
+  /**
+   * Explicit chapters (Model A). When present, the lesson renders the two-pane
+   * classroom (chapter rail + per-chapter video/description/task) and the
+   * legacy bottom Homework block is hidden. When absent, chapters are derived
+   * from the cover section bullets for backward compatibility.
+   */
+  chapters?: Chapter[];
   sections?: LessonSection[];
   resources: Resource[];
 }
@@ -73,17 +123,18 @@ export interface HomeworkRecord {
   doneLessonIds: string[];
 }
 
-/** A single video clip inside a lesson playlist. */
+/** A single video clip inside a lesson playlist (the player unit). */
 export interface Clip {
   id: string;
   title: string;
   durationSec: number;
   /**
-   * YouTube video ID for this clip (e.g. "dQw4w9WgXcQ").
-   * When present, the real YouTube IFrame player is used.
-   * When absent, the simulated placeholder player is used.
+   * Resolved video source for this clip.
+   *   - youtube -> rich custom player (YT IFrame API)
+   *   - loom    -> clean native embed
+   *   - absent  -> simulated placeholder player
    */
-  videoId?: string;
+  video?: VideoSource;
 }
 
 /** Derived helpers used across the UI. */

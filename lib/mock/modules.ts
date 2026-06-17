@@ -1,6 +1,14 @@
 import { Rocket, TrendingUp, Mic, Building2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { Module, Lesson, Bullet, Clip, LessonSection } from "@/lib/types";
+import type {
+  Module,
+  Lesson,
+  Bullet,
+  Clip,
+  Chapter,
+  LessonSection,
+} from "@/lib/types";
+import { parseVideo } from "@/lib/video";
 
 /** Tiny helper to build bullet trees readably. */
 const b = (text: string, children?: Bullet[], href?: string): Bullet => ({
@@ -25,6 +33,99 @@ const courseLessons: Lesson[] = [
     videoUrl: "",
     content:
       "Get set up before the course starts. Bookmark your core tools, complete the platform basics, and lay your agency's foundation.",
+    chapters: [
+      {
+        id: "orientation-intro",
+        title: "Intro to agency",
+        video: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", // TODO: replace with the real lesson video
+        durationSec: 12,
+        description:
+          "What the AssignX agency model is, how partners make money, and what you'll have built by day 30.",
+        task: {
+          type: "text",
+          title: "Define your agency in one line",
+          body: "Lock in your direction before you build anything.",
+          bullets: [
+            b("Write your subscription strategy"),
+            b("Set up internal sub-accounts (internal use plan)"),
+          ],
+        },
+      },
+      {
+        id: "orientation-stripe",
+        title: "Stripe setup",
+        video: "https://www.youtube.com/watch?v=aqz-KE-bpKQ", // TODO: replace with the real lesson video
+        durationSec: 14,
+        description:
+          "Connect Stripe so you can charge clients and run subscription plans.",
+        task: {
+          type: "video",
+          title: "Follow the billing walkthrough",
+          video: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          body: "Watch this and connect Stripe end to end, then confirm a test charge goes through.",
+        },
+      },
+      {
+        id: "orientation-twilio",
+        title: "Twilio setup",
+        // Loom teaching video -> clean native embed (no custom overlay).
+        video: "https://www.loom.com/share/85b96828e69b42fcaf45e5ec2c09c77a",
+        durationSec: 11,
+        description:
+          "Provision Twilio so your agents can place and receive calls.",
+        task: {
+          type: "text",
+          title: "Create your Twilio account",
+          bullets: [b("Buy a phone number"), b("Add it to your agency")],
+        },
+      },
+      {
+        id: "orientation-trusthub",
+        title: "Twilio Trust Hub",
+        durationSec: 13,
+        description:
+          "Register your business with Twilio Trust Hub so your numbers stay verified and deliverable.",
+        task: {
+          type: "text",
+          title: "Submit your Trust Hub profile",
+          bullets: [
+            b("Complete business verification"),
+            b("Start A2P registration"),
+          ],
+        },
+      },
+      {
+        id: "orientation-walkthrough",
+        title: "Platform Walkthrough",
+        durationSec: 10,
+        description:
+          "A guided tour of the AssignX platform: pipelines, campaigns, smartlists, and KYC.",
+        task: {
+          type: "video",
+          title: "Take the platform tour",
+          // Loom video task -> clean native embed.
+          video: "https://www.loom.com/share/85b96828e69b42fcaf45e5ec2c09c77a",
+          body: "Watch the full walkthrough, then click through each section in your own account.",
+        },
+      },
+      {
+        id: "orientation-bookmark",
+        title: "Bookmark",
+        durationSec: 12,
+        description:
+          "Bookmark the tools you'll live in for the next 30 days.",
+        task: {
+          type: "text",
+          title: "Bookmark your core tools",
+          bullets: [
+            b("app.assignx.ai", undefined, "https://app.assignx.ai"),
+            b("Skool"),
+            b("Twilio.com", undefined, "https://twilio.com"),
+            b("Finish whitelabel setup (domain, email, brand, widget)"),
+          ],
+        },
+      },
+    ],
     sections: [
       {
         heading: "What you'll cover",
@@ -616,46 +717,56 @@ export function getCoverSection(lesson: Lesson): LessonSection | undefined {
   return lesson.sections?.find((s) => !/homework/i.test(s.heading));
 }
 
-/**
- * Demo YouTube video IDs for the Orientation lesson clips.
- * These are stable, public, neutral YouTube videos used for development.
- * TODO: replace with real lesson videos once lesson_clips.video_url is seeded.
- *
- * Index 0 -> "Intro to agency" clip
- * Index 1 -> "Stripe setup" clip
- * All other orientation clips and all other lessons use the simulated player.
- */
-const ORIENTATION_DEMO_VIDEO_IDS: Record<number, string> = {
-  0: "dQw4w9WgXcQ", // TODO: random public test video, replace with the real lesson video
-  1: "aqz-KE-bpKQ", // TODO: random public test video (Big Buck Bunny), replace with real video
-};
+/** Whether a lesson defines explicit chapters (Model A two-pane classroom). */
+export function lessonUsesChapters(lesson: Lesson): boolean {
+  return !!(lesson.chapters && lesson.chapters.length > 0);
+}
 
 /**
- * Derives the playlist of clips for a lesson from the top-level bullets
- * of its cover section. Duration varies slightly per index so demo clips
- * feel distinct (10-14s range, always >= 8s so the 5s countdown is visible).
- * Falls back to a single 20s clip when there is no cover section.
- *
- * For the Orientation lesson, the first two clips include a demo videoId so
- * the real YouTube player is exercised. The rest use the simulated player.
+ * The chapters for a lesson. When the lesson defines explicit `chapters`, they
+ * are used as-is. Otherwise chapters are derived from the cover section bullets
+ * (title-only, no per-chapter description; sub-bullets become a text task so no
+ * information is lost). Falls back to a single chapter when there is no cover.
  */
-export function getLessonClips(lesson: Lesson): Clip[] {
+export function getLessonChapters(lesson: Lesson): Chapter[] {
+  if (lesson.chapters && lesson.chapters.length > 0) return lesson.chapters;
+
   const cover = getCoverSection(lesson);
   if (!cover || cover.bullets.length === 0) {
     return [{ id: `${lesson.id}-c0`, title: lesson.title, durationSec: 20 }];
   }
-  return cover.bullets.map((bullet, i) => {
-    const base = {
-      id: `${lesson.id}-c${i}`,
-      title: bullet.text,
-      // Stagger duration: 10, 12, 11, 13, 10, 12, ... (never < 8)
-      durationSec: 10 + ((i * 2) % 5),
+  return cover.bullets.map((bullet, i) => ({
+    id: `${lesson.id}-c${i}`,
+    title: bullet.text,
+    // Stagger duration: 10, 12, 11, 13, 10, 12, ... (never < 8)
+    durationSec: 10 + ((i * 2) % 5),
+    // Preserve any sub-bullets as a text task in the detail pane.
+    ...(bullet.children && bullet.children.length > 0
+      ? {
+          task: {
+            type: "text" as const,
+            title: "Work through this",
+            bullets: bullet.children,
+          },
+        }
+      : {}),
+  }));
+}
+
+/**
+ * Derives the playlist of clips (the player unit) from the lesson chapters.
+ * Each chapter maps to one clip; the chapter `video` URL is parsed into a
+ * provider/id so the player can pick YouTube (rich), Loom (embed) or simulated.
+ */
+export function getLessonClips(lesson: Lesson): Clip[] {
+  return getLessonChapters(lesson).map((ch, i) => {
+    const video = parseVideo(ch.video);
+    return {
+      id: ch.id,
+      title: ch.title,
+      durationSec: ch.durationSec ?? 10 + ((i * 2) % 5),
+      ...(video ? { video } : {}),
     };
-    // Attach demo videoIds only on the Orientation lesson
-    if (lesson.id === "orientation" && ORIENTATION_DEMO_VIDEO_IDS[i]) {
-      return { ...base, videoId: ORIENTATION_DEMO_VIDEO_IDS[i] };
-    }
-    return base;
   });
 }
 

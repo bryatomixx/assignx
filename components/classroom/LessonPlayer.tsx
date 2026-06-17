@@ -778,6 +778,14 @@ function useFloatingPlayer() {
     if (!el) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
+        // Ignore measurements taken before the placeholder is laid out. Inside a
+        // CSS grid the `1fr` column can resolve its width a frame late, so the
+        // first callback may report a zero-size box (ratio 0 -> "not visible").
+        // Acting on that would latch the player into floating mode and, because
+        // a stably-visible element fires no further threshold crossing, it would
+        // never re-dock. Skipping zero-size entries keeps it docked on load.
+        const r = entry.boundingClientRect;
+        if (r.width === 0 || r.height === 0) return;
         const visible = entry.isIntersecting && entry.intersectionRatio >= 0.2;
         if (visible) {
           setDocked(true);
@@ -1087,7 +1095,7 @@ function YouTubeClipPlayer({
 
   const player = useYouTubePlayer(
     youtubeHostRef,
-    clip.videoId!,
+    clip.video!.id,
     portalMounted && isVisible,
   );
   const { state, elapsed, durationSec, countdownSec, togglePlay, cancelCountdown, seekTo, volume, muted, setVolume, toggleMute } = player;
@@ -1277,6 +1285,35 @@ function YouTubeClipPlayer({
   );
 }
 
+// ---- LoomClipPlayer ----
+// Loom does not expose YouTube's IFrame playback API, so (per the chosen
+// "clean embed" approach) it renders Loom's native player inside the same
+// branded frame: no custom overlay, no progress bar, no autoadvance/countdown,
+// no floating. Advancing between chapters and marking the lesson complete are
+// manual. Rendered in normal flow (no portal), so the floating machinery never
+// runs for Loom clips.
+function LoomClipPlayer({ clips, currentClipIndex }: ClipSubProps) {
+  const clip = clips[currentClipIndex] ?? clips[0];
+  const src = `https://www.loom.com/embed/${clip.video!.id}`;
+  return (
+    <div className="relative aspect-video w-full overflow-hidden rounded-3xl border border-line bg-black">
+      <iframe
+        key={clip.id}
+        src={src}
+        title={clip.title}
+        className="absolute inset-0 h-full w-full"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+        allowFullScreen
+      />
+      <div className="absolute top-3 right-3 z-10 pointer-events-none">
+        <span className="rounded-md bg-black/50 px-2 py-0.5 text-[10px] font-semibold text-white/70 backdrop-blur">
+          Loom
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ---- LessonPlayer (controlled outer shell) ----
 // Decides which clip sub-component to render. Reads session storage for
 // autoplay intent and passes it down. The key prop on the sub-component
@@ -1292,7 +1329,7 @@ export function LessonPlayer({
   onClipWatched,
 }: LessonPlayerProps) {
   const clip = clips[currentClipIndex] ?? clips[0];
-  const isYouTube = !!clip.videoId;
+  const provider = clip.video?.provider;
 
   // shouldAutoplay tracks two sources:
   // 1. A previous lesson set AUTOPLAY_KEY in sessionStorage (lessonAutoplay state).
@@ -1345,8 +1382,11 @@ export function LessonPlayer({
   // Key: re-mount sub-component on clip change so the hook resets cleanly.
   const subKey = `${lesson.id}-clip-${currentClipIndex}-${clip.id}`;
 
-  if (isYouTube) {
+  if (provider === "youtube") {
     return <YouTubeClipPlayer key={subKey} {...sharedProps} />;
+  }
+  if (provider === "loom") {
+    return <LoomClipPlayer key={subKey} {...sharedProps} />;
   }
   return <SimulatedClipPlayer key={subKey} {...sharedProps} />;
 }

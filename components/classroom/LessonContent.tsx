@@ -3,25 +3,27 @@
 /**
  * LessonContent
  *
- * Owns the playlist state (currentClipIndex + watchedIndices) for a single
- * lesson. Rendered with key={lesson.id} by the page, so React automatically
- * unmounts and remounts this component on every lesson navigation -- no reset
- * effect needed.
+ * Owns the per-lesson UI state (currentClipIndex + watchedIndices + task
+ * completion) for a single lesson. Rendered with key={lesson.id} by the page,
+ * so React unmounts and remounts this component on every lesson navigation --
+ * no reset effect needed.
  *
- * Data flow is strictly top-down:
- *   LessonContent (state owner)
- *     -> LessonPlayer  (controlled: receives currentClipIndex, calls callbacks)
- *     -> LessonPlaylist (reads same state, calls onSelectClip)
+ * Layout (Model A): a two-pane classroom.
+ *   - Left rail  : ChapterRail ("What you'll cover") -- selects a chapter.
+ *   - Main pane  : LessonPlayer (the chapter video) + ChapterDetail
+ *                  (the chapter description + its own task).
  *
- * No useEffect ever calls a parent setState, so there is no render loop.
+ * Every pane reads the same currentClipIndex, so selecting a chapter in the
+ * rail swaps the video AND the description/task in lockstep. Data flows strictly
+ * top-down; no useEffect ever calls a parent setState, so there is no render loop.
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { getLessonClips, getCoverSection } from "@/lib/mock/modules";
+import { getLessonChapters, getLessonClips } from "@/lib/mock/modules";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { LessonPlayer } from "@/components/classroom/LessonPlayer";
-import { LessonPlaylist } from "@/components/classroom/LessonPlaylist";
-import { LessonSections } from "@/components/classroom/LessonSections";
+import { ChapterRail } from "@/components/classroom/ChapterRail";
+import { ChapterDetail } from "@/components/classroom/ChapterDetail";
 import type { Lesson, Module } from "@/lib/types";
 
 interface LessonContentProps {
@@ -37,22 +39,24 @@ export function LessonContent({
   next,
   moduleSlug,
 }: LessonContentProps) {
-  // Derive clips once -- stable reference for the lifetime of this component
-  // instance (key={lesson.id} on the parent guarantees a fresh instance per
-  // lesson, so no stale-closure risk).
+  // Chapters are the source of truth; clips are the player projection of them.
+  // Stable for the lifetime of this instance (key={lesson.id} on the parent
+  // guarantees a fresh instance per lesson, so no stale-closure risk).
+  const chapters = getLessonChapters(lesson);
   const clips = getLessonClips(lesson);
-  const coverSection = getCoverSection(lesson);
-  const hasCoverSection = !!coverSection && clips.length > 1;
 
   const { markComplete, isComplete } = useAcademy();
 
-  // --- Playlist state lives here, flows down as props ---
+  // --- Per-lesson UI state lives here, flows down as props ---
   const [currentClipIndex, setCurrentClipIndex] = useState(0);
   const [watchedIndices, setWatchedIndices] = useState<Set<number>>(
     () => new Set(),
   );
+  const [taskDoneIndices, setTaskDoneIndices] = useState<Set<number>>(
+    () => new Set(),
+  );
 
-  // Auto-complete: once every clip in this lesson has been watched, mark the
+  // Auto-complete: once every chapter in this lesson has been watched, mark the
   // lesson complete so it counts toward course progress. markComplete is
   // idempotent and the isComplete guard stops this from re-running.
   useEffect(() => {
@@ -65,8 +69,8 @@ export function LessonContent({
     }
   }, [watchedIndices, clips.length, lesson.id, isComplete, markComplete]);
 
-  // Stable callback: mark a clip index as watched.
-  // Uses updater form so it never needs watchedIndices in its dep array.
+  // Stable callback: mark a chapter index as watched. Updater form so it never
+  // needs watchedIndices in its dep array.
   const handleClipWatched = useCallback((i: number) => {
     setWatchedIndices((prev) => {
       if (prev.has(i)) return prev; // no change -> no re-render
@@ -76,47 +80,69 @@ export function LessonContent({
     });
   }, []);
 
-  // Stable callback: advance to a specific clip index (from auto-advance).
   const handleClipChange = useCallback((i: number) => {
     setCurrentClipIndex(i);
   }, []);
 
-  // Stable callback: user clicks a row in the playlist sidebar.
-  const handleSelectClip = useCallback((i: number) => {
+  const handleSelectChapter = useCallback((i: number) => {
     setCurrentClipIndex(i);
   }, []);
 
-  return (
-    <>
-      {/* Controlled player: receives currentClipIndex from above, calls
-          onClipChange / onClipWatched to signal state changes upward.
-          No internal clip-index state; no onPlaylistState push. */}
-      <LessonPlayer
-        lesson={lesson}
-        module={module}
-        next={next}
-        moduleSlug={moduleSlug}
-        clips={clips}
-        currentClipIndex={currentClipIndex}
-        onClipChange={handleClipChange}
-        onClipWatched={handleClipWatched}
-      />
+  const handleToggleTask = useCallback((i: number) => {
+    setTaskDoneIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }, []);
 
-      {/* Cover section: rendered as interactive playlist when multiple clips */}
-      {hasCoverSection && coverSection && (
-        <LessonPlaylist
-          section={coverSection}
+  const currentChapter = chapters[currentClipIndex] ?? chapters[0];
+
+  // Bottom-of-rail navigation: go to the next lesson, or back to the module
+  // overview when this is the last lesson.
+  const nextNav = next
+    ? { href: `/classroom/${moduleSlug}/${next.id}`, label: "Next lesson" }
+    : { href: `/classroom/${moduleSlug}`, label: "Back to module" };
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+      {/* Left rail: chapter list. Sticky on desktop so it tracks while you
+          scroll the main pane. */}
+      <aside className="lg:sticky lg:top-6 lg:self-start">
+        <ChapterRail
+          chapters={chapters}
+          currentIndex={currentClipIndex}
+          watchedIndices={watchedIndices}
+          taskDoneIndices={taskDoneIndices}
+          onSelect={handleSelectChapter}
+          next={nextNav}
+        />
+      </aside>
+
+      {/* Main pane: the selected chapter's video + description + task. */}
+      <div className="min-w-0">
+        {/* Controlled player: receives currentClipIndex from above, calls
+            onClipChange / onClipWatched to signal state changes upward. */}
+        <LessonPlayer
+          lesson={lesson}
+          module={module}
+          next={next}
+          moduleSlug={moduleSlug}
           clips={clips}
           currentClipIndex={currentClipIndex}
-          watchedIndices={watchedIndices}
-          onSelectClip={handleSelectClip}
+          onClipChange={handleClipChange}
+          onClipWatched={handleClipWatched}
         />
-      )}
 
-      {/* Cover section as plain list when there is only 1 clip */}
-      {!hasCoverSection && coverSection && (
-        <LessonSections sections={[coverSection]} />
-      )}
-    </>
+        {currentChapter && (
+          <ChapterDetail
+            chapter={currentChapter}
+            taskDone={taskDoneIndices.has(currentClipIndex)}
+            onToggleTask={() => handleToggleTask(currentClipIndex)}
+          />
+        )}
+      </div>
+    </div>
   );
 }

@@ -11,7 +11,7 @@ import {
   Clock,
   Download,
 } from "lucide-react";
-import { hasHomework, getModule } from "@/lib/mock/modules";
+import { hasHomework, getModule, lessonUsesChapters } from "@/lib/mock/modules";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { Button } from "@/components/ui/Button";
 import { LessonSections } from "@/components/classroom/LessonSections";
@@ -48,12 +48,15 @@ export default function LessonPage() {
   const done = isComplete(lesson.id);
   const lessonHasHomework = hasHomework(lesson);
   const hwDone = isHomeworkDone(lesson.id);
+  // Chaptered lessons carry their task per chapter, so the single bottom
+  // Homework block is hidden for them.
+  const usesChapters = lessonUsesChapters(lesson);
 
   // Sections that are NOT the cover section (e.g. Homework)
   const otherSections = lesson.sections?.filter((s) => /homework/i.test(s.heading)) ?? [];
 
   return (
-    <div className="mx-auto max-w-3xl px-5 py-8 sm:px-8 sm:py-12">
+    <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
       <Link
         href={`/classroom/${module.slug}`}
         className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-500 transition-colors hover:text-ink-900"
@@ -68,22 +71,8 @@ export default function LessonPage() {
         transition={{ duration: 0.4 }}
         className="mt-4"
       >
-        {/*
-          LessonContent owns the playlist state (currentClipIndex + watchedIndices).
-          key={lesson.id} ensures the component is unmounted and remounted on every
-          lesson navigation, so state resets automatically without any effect.
-          Data flows strictly top-down: LessonContent -> LessonPlayer (controlled)
-                                                       -> LessonPlaylist
-        */}
-        <LessonContent
-          key={lesson.id}
-          lesson={lesson}
-          module={module}
-          next={next}
-          moduleSlug={module.slug}
-        />
-
-        <div className="mt-6 flex items-center gap-1.5 text-xs text-ink-300">
+        {/* Lesson header */}
+        <div className="flex items-center gap-1.5 text-xs text-ink-300">
           <Clock className="h-3.5 w-3.5" /> {lesson.durationMin} min · Lesson{" "}
           {index + 1} of {module.lessons.length}
         </div>
@@ -93,13 +82,26 @@ export default function LessonPage() {
             {lesson.subtitle}
           </p>
         )}
-
-        <div className="mt-5 whitespace-pre-line leading-relaxed text-ink-700">
+        <div className="mt-4 mb-6 whitespace-pre-line leading-relaxed text-ink-700">
           {lesson.content}
         </div>
 
-        {/* Homework and any other non-cover sections */}
-        {otherSections.length > 0 && (
+        {/*
+          LessonContent owns the per-lesson UI state. key={lesson.id} ensures it
+          unmounts and remounts on every lesson navigation, so state resets
+          automatically. It renders the two-pane classroom: chapter rail (left)
+          + the selected chapter's video, description and task (main pane).
+        */}
+        <LessonContent
+          key={lesson.id}
+          lesson={lesson}
+          module={module}
+          next={next}
+          moduleSlug={module.slug}
+        />
+
+        {/* Legacy bottom Homework block -- only for lessons without chapters */}
+        {!usesChapters && otherSections.length > 0 && (
           <div className="mt-6">
             <LessonSections sections={otherSections} />
           </div>
@@ -159,7 +161,7 @@ export default function LessonPage() {
             </AnimatePresence>
           </Button>
 
-          {lessonHasHomework && (
+          {!usesChapters && lessonHasHomework && (
             <button
               onClick={() => toggleHomework(lesson.id)}
               className={cn(
