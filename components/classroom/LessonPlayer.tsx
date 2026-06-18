@@ -765,6 +765,35 @@ function useFloatingPlayer() {
     return () => ro.disconnect();
   }, [measureRect]);
 
+  // Re-measure when content ABOVE the placeholder reflows without a scroll/size
+  // event of its own -- chiefly when web fonts finish loading and a long title
+  // above the player wraps to another line, pushing the placeholder down. The
+  // docked surface is position:fixed, so a stale top would overlap the title.
+  useEffect(() => {
+    const ids: number[] = [];
+    ids.push(
+      requestAnimationFrame(() => {
+        measureRect();
+        ids.push(requestAnimationFrame(() => measureRect()));
+      }),
+    );
+    const onResize = () => measureRect();
+    window.addEventListener("resize", onResize);
+    let cancelled = false;
+    if (typeof document !== "undefined" && document.fonts?.ready) {
+      document.fonts.ready
+        .then(() => {
+          if (!cancelled) measureRect();
+        })
+        .catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+      ids.forEach((id) => cancelAnimationFrame(id));
+      window.removeEventListener("resize", onResize);
+    };
+  }, [measureRect]);
+
   // closedRef keeps a stable reference to the current closed value so the
   // IntersectionObserver callback never captures a stale closure.
   const closedRef = useRef(closed);

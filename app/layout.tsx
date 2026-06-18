@@ -30,7 +30,11 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${inter.variable} ${interTight.variable}`}>
-      <body>
+      {/* suppressHydrationWarning: browser extensions (e.g. ColorZilla adds
+          cz-shortcut-listen, Grammarly its own) inject attributes onto <body>
+          before React hydrates, which would otherwise trip a hydration warning
+          we cannot control. This suppresses only body's own attribute diff. */}
+      <body suppressHydrationWarning>
         <AcademyProvider>
           <BoardProvider>
             <AppShell>{children}</AppShell>

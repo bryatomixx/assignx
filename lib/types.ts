@@ -87,17 +87,21 @@ export interface Lesson {
   title: string;
   subtitle?: string;
   durationMin: number;
-  videoUrl: string; // placeholder for now
-  content: string; // short intro / summary
   /**
-   * Explicit chapters (Model A). When present, the lesson renders the two-pane
-   * classroom (chapter rail + per-chapter video/description/task) and the
-   * legacy bottom Homework block is hidden. When absent, chapters are derived
-   * from the cover section bullets for backward compatibility.
+   * "video" lessons show the player; "text" lessons (e.g. prompt/SOP lessons,
+   * marked "not a video") render their content with no player. Defaults to "video".
    */
+  kind?: "video" | "text";
+  /** Teaching video URL (YouTube or Loom). Absent -> simulated placeholder player. */
+  video?: string;
+  /** Short intro / description shown under the player. */
+  content?: string;
+  /** Optional downloads / links. */
+  resources?: Resource[];
+  // ---- legacy (unused by the new module/lesson model, kept for type compat) ----
+  videoUrl?: string;
   chapters?: Chapter[];
   sections?: LessonSection[];
-  resources: Resource[];
 }
 
 export interface Module {
