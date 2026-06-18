@@ -1,6 +1,7 @@
 import { createAdminClient, createServerSupabase } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ModPermissions, PostMediaType } from "@/lib/types";
+import { OWNER_USER_ID } from "@/lib/community/owner";
 
 // ---------------------------------------------------------------------------
 // Security helpers
@@ -72,9 +73,8 @@ function canDeleteComments(ctx: ActorContext): boolean {
 }
 
 function canPinContent(ctx: ActorContext): boolean {
-  if (isAdmin(ctx)) return true;
-  if (isMod(ctx)) return ctx.modPerms!.canPinContent;
-  return false;
+  // Pinning posts and comments is admin-only. Mods and students cannot pin.
+  return isAdmin(ctx);
 }
 
 function canManageApproval(ctx: ActorContext): boolean {
@@ -259,6 +259,43 @@ async function handleCreatePost(
 
     for (const recipientId of approverIds) {
       await pushNotification(db, recipientId, ctx.userId, "post_pending", postId);
+    }
+  }
+
+  // When the OWNER (Noah) publishes an (auto-approved) post, broadcast a special
+  // "announcement" notification to every other member. Best-effort: a failure
+  // here (e.g. the 'announcement' enum value not yet migrated) is logged but must
+  // never fail the post creation, since the post itself was already inserted.
+  if (ctx.userId === OWNER_USER_ID && status === "approved") {
+    try {
+      const allRes = await db.from("profiles").select("id");
+      if (allRes.error) {
+        console.error(
+          "[handleCreatePost] announcement: failed to load recipients:",
+          allRes.error.message,
+        );
+      } else {
+        const rows = (allRes.data as { id: string }[])
+          .filter((r) => r.id !== ctx.userId)
+          .map((r) => ({
+            recipient_id: r.id,
+            actor_id: ctx.userId,
+            type: "announcement",
+            post_id: postId,
+          }));
+        if (rows.length > 0) {
+          const insRes = await db.from("notifications").insert(rows);
+          if (insRes.error) {
+            console.error(
+              "[handleCreatePost] announcement broadcast failed:",
+              insRes.error.message,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[handleCreatePost] announcement broadcast threw:", msg);
     }
   }
 

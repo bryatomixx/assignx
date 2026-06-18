@@ -27,6 +27,8 @@ function notifText(
       return "Your post was not approved";
     case "post_pending":
       return `${actorName} submitted a post for review`;
+    case "announcement":
+      return `${actorName} posted a new announcement`;
     default:
       return "New notification";
   }

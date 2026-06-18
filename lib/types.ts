@@ -224,7 +224,9 @@ export type NotificationType =
   | "follow"
   | "post_approved"
   | "post_rejected"
-  | "post_pending";
+  | "post_pending"
+  // Broadcast to every member when the community owner (Noah) publishes a post.
+  | "announcement";
 
 export interface AppNotification {
   id: string;

@@ -10,7 +10,7 @@ import {
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Maximize2, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
+import { Loader2, Maximize2, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { useSimulatedPlayer } from "@/lib/hooks/useSimulatedPlayer";
@@ -1326,16 +1326,36 @@ function YouTubeClipPlayer({
 // no floating. Advancing between chapters and marking the lesson complete are
 // manual. Rendered in normal flow (no portal), so the floating machinery never
 // runs for Loom clips.
-function LoomClipPlayer({ clips, currentClipIndex }: ClipSubProps) {
+function LoomClipPlayer({ clips, currentClipIndex, module }: ClipSubProps) {
   const clip = clips[currentClipIndex] ?? clips[0];
   const src = `https://www.loom.com/embed/${clip.video!.id}`;
+  // Loom renders on a black background while its iframe loads (1-2s). Show the
+  // branded gradient + a spinner behind it and fade the player in on load, so
+  // the user sees AssignX branding instead of a black flash.
+  const [loaded, setLoaded] = useState(false);
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-3xl border border-line bg-black">
+    <div className="relative aspect-video w-full overflow-hidden rounded-3xl border border-line">
+      {/* Branded loading backdrop (behind the iframe). */}
+      <div
+        className="absolute inset-0 opacity-95"
+        style={{ backgroundImage: module.accent }}
+        aria-hidden="true"
+      />
+      <div className="absolute inset-0 bg-black/20" aria-hidden="true" />
+      {!loaded && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center" aria-hidden="true">
+          <Loader2 className="h-8 w-8 animate-spin text-white/80" />
+        </div>
+      )}
       <iframe
         key={clip.id}
         src={src}
         title={clip.title}
-        className="absolute inset-0 h-full w-full"
+        onLoad={() => setLoaded(true)}
+        className={cn(
+          "absolute inset-0 h-full w-full transition-opacity duration-500",
+          loaded ? "opacity-100" : "opacity-0",
+        )}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
         allowFullScreen
       />

@@ -519,7 +519,7 @@ function ClientDetail() {
     { key: "canApprovePosts", label: "Approve posts" },
     { key: "canDeletePosts", label: "Delete posts" },
     { key: "canDeleteComments", label: "Delete comments" },
-    { key: "canPinContent", label: "Pin content" },
+    // Pinning is admin-only, so it is intentionally not a delegable mod permission.
     { key: "canManageApproval", label: "Manage approval settings" },
   ];
 

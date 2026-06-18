@@ -17,6 +17,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { RoleBadge } from "@/components/community/RoleBadge";
 import { useBoard } from "@/lib/store/BoardProvider";
 import { useAcademy } from "@/lib/store/AcademyProvider";
+import { isOwner } from "@/lib/community/owner";
 import { cn } from "@/lib/utils";
 
 // Map of badge icon names (from gamification.ts) to lucide components.
@@ -123,39 +124,53 @@ export function TopContributors() {
             const rank = idx + 1;
             const user = users.find((u) => u.id === entry.userId);
             const role = roleOf(entry.userId);
+            const owner = isOwner(entry.userId);
+
+            const rowContent = (
+              <>
+                <RankLabel rank={rank} />
+
+                <Avatar
+                  emoji={user?.avatar}
+                  name={user?.name}
+                  size="sm"
+                  className="shrink-0"
+                />
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="truncate text-sm font-semibold text-ink-900">
+                      {user?.name ?? "Unknown"}
+                    </span>
+                    <RoleBadge role={role} />
+                  </div>
+                  <span className="text-xs text-ink-400">
+                    {entry.levelName}
+                  </span>
+                </div>
+
+                <span className="shrink-0 text-sm font-semibold text-brand-500">
+                  {entry.points} pts
+                </span>
+              </>
+            );
 
             return (
               <li key={entry.userId}>
-                <Link
-                  href={`/community/members/${entry.userId}`}
-                  className="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
-                  aria-label={`${user?.name ?? "Unknown"}, rank ${rank}, ${entry.points} points`}
-                >
-                  <RankLabel rank={rank} />
-
-                  <Avatar
-                    emoji={user?.avatar}
-                    name={user?.name}
-                    size="sm"
-                    className="shrink-0"
-                  />
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="truncate text-sm font-semibold text-ink-900">
-                        {user?.name ?? "Unknown"}
-                      </span>
-                      <RoleBadge role={role} />
-                    </div>
-                    <span className="text-xs text-ink-400">
-                      {entry.levelName}
-                    </span>
+                {owner ? (
+                  // The owner (Noah) is not browsable: render the row without a link.
+                  <div className="flex items-center gap-3 rounded-xl px-2 py-2">
+                    {rowContent}
                   </div>
-
-                  <span className="shrink-0 text-sm font-semibold text-brand-500">
-                    {entry.points} pts
-                  </span>
-                </Link>
+                ) : (
+                  <Link
+                    href={`/community/members/${entry.userId}`}
+                    className="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                    aria-label={`${user?.name ?? "Unknown"}, rank ${rank}, ${entry.points} points`}
+                  >
+                    {rowContent}
+                  </Link>
+                )}
               </li>
             );
           })}

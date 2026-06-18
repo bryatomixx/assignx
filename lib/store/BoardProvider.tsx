@@ -285,12 +285,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const canPinContent = useCallback(
     (userId?: string): boolean => {
       const uid = userId ?? currentUserId;
-      const role = roleOf(uid);
-      if (role === "admin") return true;
-      if (role === "mod") return mods[uid]?.canPinContent ?? false;
-      return false;
+      // Pinning posts and comments is admin-only. Mods and students cannot pin.
+      return roleOf(uid) === "admin";
     },
-    [currentUserId, roleOf, mods],
+    [currentUserId, roleOf],
   );
 
   const canManageApproval = useCallback(

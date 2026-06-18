@@ -11,6 +11,7 @@ import { BADGE_ICON_MAP } from "@/components/community/TopContributors";
 import { ALL_BADGES } from "@/lib/community/gamification";
 import { useBoard } from "@/lib/store/BoardProvider";
 import { useAcademy } from "@/lib/store/AcademyProvider";
+import { isOwner } from "@/lib/community/owner";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -31,6 +32,7 @@ export function UserPreviewCard({ userId, onClose }: UserPreviewCardProps) {
 
   // Portal requires the DOM to be available.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -188,13 +190,18 @@ export function UserPreviewCard({ userId, onClose }: UserPreviewCardProps) {
 
             {/* Actions row */}
             <div className="mt-5 flex items-center justify-between gap-3">
-              <Link
-                href={`/community/members/${userId}`}
-                onClick={onClose}
-                className="text-xs font-medium text-brand-500 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 rounded"
-              >
-                View full profile
-              </Link>
+              {/* The owner (Noah) is not browsable: no full-profile link. */}
+              {isOwner(userId) ? (
+                <span />
+              ) : (
+                <Link
+                  href={`/community/members/${userId}`}
+                  onClick={onClose}
+                  className="text-xs font-medium text-brand-500 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 rounded"
+                >
+                  View full profile
+                </Link>
+              )}
 
               {!isSelf && (
                 <button
@@ -249,6 +256,14 @@ export function UserNameButton({ userId, className }: UserNameButtonProps) {
 
   const user = users.find((u) => u.id === userId);
   const name = user?.name ?? "Unknown";
+
+  // The owner (Noah) is not browsable: render the name as plain text, with no
+  // preview card and no profile navigation.
+  if (isOwner(userId)) {
+    return (
+      <span className={cn("font-semibold text-ink-900", className)}>{name}</span>
+    );
+  }
 
   return (
     <>

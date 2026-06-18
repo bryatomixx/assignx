@@ -11,6 +11,7 @@ import { LEVELS } from "@/lib/community/gamification";
 import { ALL_BADGES } from "@/lib/community/gamification";
 import { useBoard } from "@/lib/store/BoardProvider";
 import { useAcademy } from "@/lib/store/AcademyProvider";
+import { isOwner } from "@/lib/community/owner";
 import { cn } from "@/lib/utils";
 
 export default function MemberProfilePage() {
@@ -52,6 +53,26 @@ export default function MemberProfilePage() {
   }
 
   const isSelf = currentUser.id === memberId;
+
+  // The owner (Noah) is not browsable by other members. He can still view his
+  // own profile.
+  if (isOwner(memberId) && !isSelf) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+        <Link
+          href="/community"
+          className="mb-4 inline-flex items-center gap-1.5 rounded text-sm font-medium text-ink-500 transition-colors hover:text-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to community
+        </Link>
+        <div className="rounded-xl border border-line bg-white px-6 py-10 text-center text-ink-300">
+          This profile isn&apos;t available.
+        </div>
+      </div>
+    );
+  }
+
   const role = roleOf(memberId);
   const following = isFollowing(memberId);
   const paused = isPaused();
