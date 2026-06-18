@@ -19,6 +19,7 @@ import {
   Trophy,
   TrendingUp,
   AlertTriangle,
+  CalendarClock,
 } from "lucide-react";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { useBoard } from "@/lib/store/BoardProvider";
@@ -341,6 +342,12 @@ function DashboardContent() {
                 label="Moderation"
                 description="Approve or reject pending community posts"
                 icon={Flag}
+              />
+              <QuickLink
+                href="/admin/events"
+                label="Events"
+                description="Create the events shown in the sidebar"
+                icon={CalendarClock}
               />
             </div>
           </motion.div>
