@@ -6,8 +6,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import Link from "next/link";
-import { Loader2, CheckCircle2, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { Loader2, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/Button";
 import { useAcademy } from "@/lib/store/AcademyProvider";
@@ -411,24 +410,6 @@ function LoginInner() {
       {/* Background blob */}
       <div className="pointer-events-none absolute left-1/2 top-0 h-[480px] w-[760px] -translate-x-1/2 rounded-full bg-gradient-to-b from-brand-100 via-brand-50 to-transparent blur-2xl" />
 
-      {/* Top-left nav: AssignX logo + back to homepage */}
-      <div className="absolute left-5 top-5 z-10 flex items-center gap-3 sm:left-8 sm:top-6">
-        <Link
-          href="/"
-          aria-label="Back to AssignX homepage"
-          className="rounded-lg transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
-        >
-          <Logo />
-        </Link>
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 rounded-lg text-sm font-medium text-ink-500 transition-colors hover:text-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span className="hidden sm:inline">Back to homepage</span>
-        </Link>
-      </div>
-
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
@@ -477,9 +458,16 @@ function LoginInner() {
 
         {/* Card */}
         <div className="rounded-3xl border border-line bg-white p-8">
-          {/* Logo */}
+          {/* Logo (links out to the main AssignX website) */}
           <div className="mb-6 flex justify-center">
-            <Logo />
+            <a
+              href="https://www.assignx.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="AssignX website"
+            >
+              <Logo className="h-20" />
+            </a>
           </div>
 
           {/* Password changed banner (reads ?msg param) */}

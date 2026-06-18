@@ -49,9 +49,15 @@ export function Sidebar() {
 
   return (
     <aside className="sticky top-0 hidden h-screen w-[264px] shrink-0 flex-col border-r border-line bg-white px-4 py-5 lg:flex">
-      <Link href="/" className="px-2">
+      <a
+        href="https://www.assignx.ai"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="AssignX website"
+        className="px-2"
+      >
         <Logo />
-      </Link>
+      </a>
 
       <nav className="mt-8 flex flex-col gap-1">
         {nav.map((item) => {
