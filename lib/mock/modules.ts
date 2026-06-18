@@ -1,7 +1,8 @@
 import { Compass, Rocket, Phone, TrendingUp, Plug } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { Module, Lesson, Clip, Resource } from "@/lib/types";
+import type { Module, Lesson, Clip, Resource, TemplateItem } from "@/lib/types";
 import { parseVideo } from "@/lib/video";
+import { AGENT_TEMPLATES } from "@/lib/mock/agentTemplates";
 
 /**
  * Course curriculum: five modules (Orientation + Week 1-4), each a dropdown in
@@ -19,6 +20,8 @@ interface LessonOpts {
   /** Optional banner image (public path) shown above the content. */
   image?: string;
   imageAlt?: string;
+  /** Optional collapsible templates (accordion). */
+  templates?: TemplateItem[];
   /** Optional downloads / external links shown in a Resources section. */
   resources?: Resource[];
 }
@@ -33,6 +36,7 @@ const L = (id: string, title: string, opts: LessonOpts = {}): Lesson => ({
   ...(opts.content ? { content: opts.content } : {}),
   ...(opts.image ? { image: opts.image } : {}),
   ...(opts.imageAlt ? { imageAlt: opts.imageAlt } : {}),
+  ...(opts.templates ? { templates: opts.templates } : {}),
   resources: opts.resources ?? [],
 });
 
@@ -1021,6 +1025,12 @@ In this walkthrough, you'll see how AssignX pipelines work behind the scenes and
 • Handle confirmations, no-shows, and re-engagement
 
 By the end, you'll understand how to structure pipelines that scale, without manual lead babysitting.`,
+    }),
+    L("ai-agent-templates", "AI Agent Templates", {
+      kind: "text",
+      durationMin: 10,
+      content: `Copy-paste prompt templates for your AI agents. Open a template, copy it, and drop it into your agent's script, then swap the {placeholders} for your own details.`,
+      templates: AGENT_TEMPLATES,
     }),
   ],
 );

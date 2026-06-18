@@ -29,6 +29,13 @@ export interface Resource {
   href: string;
 }
 
+/** A collapsible template entry (e.g. an AI agent prompt template). */
+export interface TemplateItem {
+  id: string;
+  title: string;
+  body: string;
+}
+
 /** A bullet point that may nest further bullets (up to a few levels deep). */
 export interface Bullet {
   text: string;
@@ -100,6 +107,8 @@ export interface Lesson {
   image?: string;
   /** Alt text for `image`. */
   imageAlt?: string;
+  /** Optional collapsible templates (accordion), e.g. the AI agent script library. */
+  templates?: TemplateItem[];
   /** Optional downloads / links. */
   resources?: Resource[];
   // ---- legacy (unused by the new module/lesson model, kept for type compat) ----

@@ -11,6 +11,7 @@ import { LockedGate } from "@/components/classroom/LockedGate";
 import { ModuleNav } from "@/components/classroom/ModuleNav";
 import { LessonMedia } from "@/components/classroom/LessonMedia";
 import { RichContent } from "@/components/classroom/RichContent";
+import { LessonAccordion } from "@/components/classroom/LessonAccordion";
 import {
   LessonChecklist,
   LessonChecklistItem,
@@ -149,6 +150,13 @@ export default function LessonPage() {
                 className="mt-5 whitespace-pre-line leading-relaxed text-ink-700"
               >
                 <RichContent text={lesson.content} />
+              </motion.div>
+            )}
+
+            {/* Templates accordion (e.g. the AI agent script library) */}
+            {lesson.templates && lesson.templates.length > 0 && (
+              <motion.div variants={itemVariants}>
+                <LessonAccordion templates={lesson.templates} />
               </motion.div>
             )}
 
