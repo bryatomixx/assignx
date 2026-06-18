@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CalendarClock, ChevronUp, ExternalLink } from "lucide-react";
-import { fetchEvents } from "@/lib/events/api";
+import { fetchEvents, EVENTS_CHANGED } from "@/lib/events/api";
 import {
   upcomingEvents,
   formatDateShort,
@@ -23,11 +23,17 @@ export function UpcomingEvents() {
 
   useEffect(() => {
     let active = true;
-    void fetchEvents().then((evs) => {
-      if (active) setEvents(evs);
-    });
+    const load = () => {
+      void fetchEvents().then((evs) => {
+        if (active) setEvents(evs);
+      });
+    };
+    load();
+    // Refresh when an admin creates/edits/deletes an event in this session.
+    window.addEventListener(EVENTS_CHANGED, load);
     return () => {
       active = false;
+      window.removeEventListener(EVENTS_CHANGED, load);
     };
   }, []);
 

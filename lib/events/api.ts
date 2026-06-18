@@ -17,6 +17,9 @@ interface ActionResult {
   error?: string;
 }
 
+/** Broadcast so live consumers (the sidebar) can refresh after a change. */
+export const EVENTS_CHANGED = "events:changed";
+
 async function action(
   name: "create" | "update" | "delete",
   payload: Record<string, unknown>,
@@ -27,7 +30,11 @@ async function action(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: name, payload }),
     });
-    return (await res.json()) as ActionResult;
+    const result = (await res.json()) as ActionResult;
+    if (result.ok && typeof window !== "undefined") {
+      window.dispatchEvent(new Event(EVENTS_CHANGED));
+    }
+    return result;
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Request failed" };
   }
