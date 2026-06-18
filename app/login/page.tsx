@@ -410,6 +410,17 @@ function LoginInner() {
       {/* Background blob */}
       <div className="pointer-events-none absolute left-1/2 top-0 h-[480px] w-[760px] -translate-x-1/2 rounded-full bg-gradient-to-b from-brand-100 via-brand-50 to-transparent blur-2xl" />
 
+      {/* Top-left brand logo, links out to the main AssignX website. */}
+      <a
+        href="https://www.assignx.ai"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="AssignX website"
+        className="absolute left-5 top-5 z-10 rounded-lg transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 sm:left-8 sm:top-6"
+      >
+        <Logo className="h-12" />
+      </a>
+
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
