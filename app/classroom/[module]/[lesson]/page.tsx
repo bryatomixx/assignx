@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
-import { ArrowLeft, ArrowRight, Check, Clock, Download, FileText } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Download, FileText } from "lucide-react";
 import { getModule, COURSE_30DAY } from "@/lib/mock/modules";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { Button } from "@/components/ui/Button";
@@ -11,6 +11,11 @@ import { LockedGate } from "@/components/classroom/LockedGate";
 import { ModuleNav } from "@/components/classroom/ModuleNav";
 import { LessonMedia } from "@/components/classroom/LessonMedia";
 import { RichContent } from "@/components/classroom/RichContent";
+import {
+  LessonChecklist,
+  LessonChecklistItem,
+} from "@/components/classroom/LessonTasks";
+import { getChecklist, tasksForSourceLesson } from "@/lib/mock/tasks";
 
 // Entrance animation. The container fades only (no transform) so it never moves
 // the fixed-position player's placeholder; each block slides up in a stagger.
@@ -54,6 +59,17 @@ export default function LessonPage() {
   const isText = lesson.kind === "text";
   const resources = lesson.resources ?? [];
 
+  // Checklist this lesson displays in full (if it is a checklist lesson), and
+  // any checklist task(s) sourced from this lesson (shown as an extra check).
+  const checklist = getChecklist(module.slug, lesson.id);
+  const sourceTasks = tasksForSourceLesson(module.slug, lesson.id);
+  const taskChecklist = sourceTasks[0]?.checklist;
+  const taskChecklistLesson = taskChecklist
+    ? getModule(taskChecklist.moduleSlug)?.lessons.find(
+        (l) => l.id === taskChecklist.lessonId,
+      )
+    : undefined;
+
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-10">
       <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
@@ -88,19 +104,14 @@ export default function LessonPage() {
           >
             {/* Title at the top of main, above the player. */}
             <motion.div variants={itemVariants}>
-              <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-300">
-                <Clock className="h-3.5 w-3.5" /> {lesson.durationMin} min · Lesson{" "}
-                {index + 1} of {module.lessons.length}
-                {isText && (
-                  <>
-                    <span>·</span>
-                    <span className="inline-flex items-center gap-1 font-medium text-ink-400">
-                      <FileText className="h-3 w-3" /> Text lesson
-                    </span>
-                  </>
-                )}
-              </div>
-              <h1 className="mt-2 text-2xl sm:text-3xl">{lesson.title}</h1>
+              {isText && (
+                <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-ink-300">
+                  <span className="inline-flex items-center gap-1 font-medium text-ink-400">
+                    <FileText className="h-3 w-3" /> Text lesson
+                  </span>
+                </div>
+              )}
+              <h1 className="text-2xl sm:text-3xl">{lesson.title}</h1>
             </motion.div>
 
             {/* Optional banner image (e.g. a sales-deck preview), shown above the body. */}
@@ -138,6 +149,24 @@ export default function LessonPage() {
                 className="mt-5 whitespace-pre-line leading-relaxed text-ink-700"
               >
                 <RichContent text={lesson.content} />
+              </motion.div>
+            )}
+
+            {/* Full checklist (when this lesson IS a checklist lesson) */}
+            {checklist && (
+              <motion.div variants={itemVariants}>
+                <LessonChecklist tasks={checklist.tasks} />
+              </motion.div>
+            )}
+
+            {/* Checklist task(s) sourced from this lesson (extra check) */}
+            {sourceTasks.length > 0 && taskChecklist && (
+              <motion.div variants={itemVariants}>
+                <LessonChecklistItem
+                  tasks={sourceTasks.map((s) => s.task)}
+                  checklistTitle={taskChecklistLesson?.title ?? "Checklist"}
+                  checklistHref={`/classroom/${taskChecklist.moduleSlug}/${taskChecklist.lessonId}`}
+                />
               </motion.div>
             )}
 

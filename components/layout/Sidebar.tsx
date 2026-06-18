@@ -8,20 +8,19 @@ import {
   LayoutDashboard,
   LogOut,
   ShieldCheck,
-  Sparkles,
   User,
   Users2,
 } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { Avatar } from "@/components/ui/Avatar";
-import { ProgressBar } from "@/components/ui/ProgressBar";
+import { UpcomingEvents } from "@/components/layout/UpcomingEvents";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { cn } from "@/lib/utils";
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { currentUser, overallPct, signOut, ready, authLoading } = useAcademy();
+  const { currentUser, signOut, ready, authLoading } = useAcademy();
 
   if (!ready || !currentUser) return <aside className="w-[264px] shrink-0" />;
 
@@ -84,14 +83,8 @@ export function Sidebar() {
       </nav>
 
       <div className="mt-auto flex flex-col gap-4">
-        {/* Overall progress */}
-        <div className="rounded-2xl bg-surface-2 p-4">
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-500">
-            <Sparkles className="h-3.5 w-3.5 text-magenta" />
-            Your progress
-          </div>
-          <ProgressBar pct={overallPct()} showLabel />
-        </div>
+        {/* Upcoming events (expands upward when clicked) */}
+        <UpcomingEvents />
 
         {/* User card: click to go to profile */}
         <div className="flex flex-col gap-2">

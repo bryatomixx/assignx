@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Plus } from "lucide-react";
+import { ArrowRight, Plus, Sparkles } from "lucide-react";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Chip } from "@/components/ui/Badge";
@@ -43,17 +43,31 @@ export default function ClassroomPage() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
+        className="flex items-start justify-between gap-6"
       >
-        <p className="text-sm font-semibold uppercase tracking-wide text-brand-500">
-          Classroom
-        </p>
-        <h1 className="mt-1 text-3xl sm:text-4xl">
-          Welcome back, {currentUser.name.split(" ")[0]} 👋
-        </h1>
-        <p className="mt-2 max-w-xl text-ink-500">
-          Build and sell AI agents the AssignX way. Start with the free 30 Days
-          Challenge.
-        </p>
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-brand-500">
+            Classroom
+          </p>
+          <h1 className="mt-1 text-3xl sm:text-4xl">
+            Welcome back, {currentUser.name.split(" ")[0]} 👋
+          </h1>
+          <p className="mt-2 max-w-xl text-ink-500">
+            Build and sell AI agents the AssignX way. Start with the free 30 Days
+            Challenge.
+          </p>
+        </div>
+
+        {/* Overall course progress, top-right of the classroom screen. */}
+        <div className="hidden shrink-0 rounded-2xl border border-line bg-white px-4 py-3 shadow-sm sm:block">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-500">
+            <Sparkles className="h-3.5 w-3.5 text-magenta" />
+            Your progress
+          </div>
+          <div className="w-44">
+            <ProgressBar pct={pct} showLabel />
+          </div>
+        </div>
       </motion.div>
 
       <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">

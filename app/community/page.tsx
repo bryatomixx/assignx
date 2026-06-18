@@ -182,8 +182,10 @@ export default function CommunityPage() {
       </section>
         </div>
 
-        {/* Right rail: top contributors, with your progress below it */}
-        <aside className="flex flex-col gap-5 lg:sticky lg:top-6">
+        {/* Right rail: top contributors + gamification. It sticks while the feed
+            scrolls, and gets its OWN scroll when its content is taller than the
+            viewport (scroll it by hovering over it). */}
+        <aside className="flex flex-col gap-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
           <TopContributors />
           <GamificationPanel />
         </aside>

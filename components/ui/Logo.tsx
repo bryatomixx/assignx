@@ -1,16 +1,17 @@
 import { cn } from "@/lib/utils";
 
+/**
+ * AssignX wordmark. Renders the brand logo image. `className` can override the
+ * default height (e.g. a larger logo on the login card).
+ */
 export function Logo({ className }: { className?: string }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center font-display text-[28px] font-semibold tracking-[-0.04em] text-ink-900",
-        className,
-      )}
-    >
-      assign
-      <span className="text-gradient-brand font-bold">X</span>
-      <span className="text-ink-500">.ai</span>
-    </span>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/assignx-logo.png"
+      alt="AssignX"
+      className={cn("h-7 w-auto select-none", className)}
+      draggable={false}
+    />
   );
 }

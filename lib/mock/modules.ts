@@ -662,17 +662,10 @@ We cover:
 
 This takes 5 minutes, but skipping it will cost you deals.`,
     }),
-    L("week-1-assignment", "Assignment: Pick Your Niche & Offer", {
+    L("week-1-assignment", "Week 1 checklist", {
       kind: "text",
       durationMin: 5,
-      content: `Time to put Week 1 into action. Complete your agency's foundation before moving on:
-
-• Connect Stripe so your payouts are ready
-• Connect Twilio so your numbers, calls, and SMS work
-• Pick your niche using the selection framework
-• Lock your branding (name, colors, and voice)
-
-Once these four are done, you're ready to start onboarding sub-accounts and selling plans.`,
+      content: `Time to put Week 1 into action. Work through your agency's foundation below. Each item is also tracked on its own lesson, so ticking it off here or there keeps them in sync. Once all four are done, you're ready to start onboarding sub-accounts and selling plans.`,
     }),
   ],
 );
