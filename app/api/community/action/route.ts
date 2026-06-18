@@ -2,6 +2,7 @@ import { createAdminClient, createServerSupabase } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ModPermissions, PostMediaType } from "@/lib/types";
 import { OWNER_USER_ID } from "@/lib/community/owner";
+import { parseVideo } from "@/lib/video";
 
 // ---------------------------------------------------------------------------
 // Security helpers
@@ -16,6 +17,14 @@ function isSafeUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+// Image posts must reference an object we uploaded to our own public post-media
+// bucket -- not an arbitrary hotlinked image URL.
+function isOwnPostMediaUrl(url: string): boolean {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base) return false;
+  return url.startsWith(`${base}/storage/v1/object/public/post-media/`);
 }
 
 // Disable caching -- this route mutates state.
@@ -201,7 +210,6 @@ async function handleCreatePost(
   if (ctx.status === "paused") return err("User is paused", 403);
 
   const body = typeof payload.body === "string" ? payload.body.slice(0, 2000) : "";
-  if (!body.trim()) return err("Post body is required");
 
   const mediaType = (payload.mediaType ?? "text") as PostMediaType;
   const mediaPayload: string | null =
@@ -211,9 +219,26 @@ async function handleCreatePost(
     if (mediaPayload.length > MAX_MEDIA_PAYLOAD_LENGTH) {
       return err("mediaPayload exceeds maximum length", 400);
     }
-    if (mediaType === "link" && !isSafeUrl(mediaPayload)) {
+    // All URL-bearing media must be a safe http/https URL.
+    if (
+      (mediaType === "link" || mediaType === "image" || mediaType === "video") &&
+      !isSafeUrl(mediaPayload)
+    ) {
       return err("mediaPayload must be a valid http/https URL", 400);
     }
+    // Videos must be YouTube or Loom links only (no arbitrary embeds).
+    if (mediaType === "video" && !parseVideo(mediaPayload)) {
+      return err("Video must be a YouTube or Loom link", 400);
+    }
+    // Images must come from our own uploaded post-media storage.
+    if (mediaType === "image" && !isOwnPostMediaUrl(mediaPayload)) {
+      return err("Image must be uploaded to AssignX", 400);
+    }
+  }
+
+  // A post needs either text or media.
+  if (!body.trim() && mediaPayload === null) {
+    return err("Post needs text or media", 400);
   }
 
   const status = await resolveInitialStatus(db, ctx);

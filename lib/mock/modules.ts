@@ -929,7 +929,27 @@ Here's what you'll learn:
 
 Whether you're just getting started or running full-scale campaigns, this short video shows you how to confidently launch calls and keep your AI working for you 24/7.`,
     }),
-    L("crm-pipeline-stages", "CRM + Pipeline Stages", { durationMin: 9 }),
+    L("crm-pipeline-stages", "CRM + Pipeline Stages", {
+      video: "https://www.loom.com/share/c21b9fe338274257bec76b5ee9f5a1cf",
+      durationMin: 9,
+      content: `This is where your AI agent starts thinking like a true sales pro, and managing your pipeline FOR you.
+
+In this video, you'll learn how to set up Pipeline & Stages so your AI knows:
+✅ When to call
+✅ How often to follow up
+✅ When to move leads between stages automatically
+✅ How to handle unresponsive leads
+✅ How to trigger reminders for hot leads, booked calls, no-shows, and even closing tasks
+
+Why it matters:
+→ Agents closing $55M+ in deals with AgentX aren't doing manual follow-up. Their AI agents run the entire cadence, from first call to booked listing → all the way to close.
+→ The RIGHT pipeline setup = more conversations, higher engagement, fewer dropped leads, more appointments → more deals.
+
+👉 You can customize EVERYTHING:
+→ Different pipelines for different lead types or team members
+→ Advanced call sequences that boost contact rate by 80%+
+→ Smart handling of new expireds, follow-ups, closing stage reminders, all on autopilot`,
+    }),
     L("pausing-resuming-calls", "Pausing & Resuming Calls", {
       video: "https://www.loom.com/share/737fc5282b97495f8b4f0ba2f00e2ab4",
       durationMin: 5,

@@ -17,6 +17,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { RoleBadge } from "@/components/community/RoleBadge";
 import { CommentThread } from "@/components/community/CommentThread";
 import { UserNameButton } from "@/components/community/UserPreviewCard";
+import { PostVideo } from "@/components/community/PostVideo";
 import { useBoard } from "@/lib/store/BoardProvider";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { cn, relativeTime, isSafeUrl } from "@/lib/utils";
@@ -258,19 +259,32 @@ export function PostCard({ post }: PostCardProps) {
         </a>
       )}
 
-      {post.mediaType === "image" && (
-        <div className="mt-3 flex aspect-video items-center justify-center gap-2 rounded-xl bg-surface-3 text-ink-300">
-          <ImageIcon className="h-6 w-6" />
-          <span className="text-sm font-medium">Image (coming soon)</span>
-        </div>
-      )}
+      {post.mediaType === "image" &&
+        (post.mediaPayload && isSafeUrl(post.mediaPayload) ? (
+          <div className="mt-3 overflow-hidden rounded-xl border border-line bg-surface-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={post.mediaPayload}
+              alt="Post image"
+              className="block max-h-[28rem] w-full object-cover"
+            />
+          </div>
+        ) : (
+          <div className="mt-3 flex aspect-video items-center justify-center gap-2 rounded-xl bg-surface-3 text-ink-300">
+            <ImageIcon className="h-6 w-6" />
+            <span className="text-sm font-medium">Image</span>
+          </div>
+        ))}
 
-      {post.mediaType === "video" && (
-        <div className="mt-3 flex aspect-video items-center justify-center gap-2 rounded-xl bg-surface-3 text-ink-300">
-          <Video className="h-6 w-6" />
-          <span className="text-sm font-medium">Video (coming soon)</span>
-        </div>
-      )}
+      {post.mediaType === "video" &&
+        (post.mediaPayload ? (
+          <PostVideo url={post.mediaPayload} />
+        ) : (
+          <div className="mt-3 flex aspect-video items-center justify-center gap-2 rounded-xl bg-surface-3 text-ink-300">
+            <Video className="h-6 w-6" />
+            <span className="text-sm font-medium">Video</span>
+          </div>
+        ))}
 
       {/* Engagement summary */}
       {(likes > 0 || comments > 0) && (
