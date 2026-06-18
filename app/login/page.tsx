@@ -7,7 +7,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Loader2, CheckCircle2, ArrowLeft } from "lucide-react";
+import { Loader2, CheckCircle2, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/Button";
 import { useAcademy } from "@/lib/store/AcademyProvider";
@@ -62,6 +62,11 @@ function FieldGroup({
   error?: string;
   hint?: React.ReactNode;
 }) {
+  // For password fields, allow toggling the value between hidden and visible.
+  const isPassword = type === "password";
+  const [revealed, setRevealed] = useState(false);
+  const inputType = isPassword && revealed ? "text" : type;
+
   return (
     <div className="flex flex-col gap-1.5">
       <label
@@ -70,19 +75,34 @@ function FieldGroup({
       >
         {label}
       </label>
-      <input
-        id={id}
-        type={type}
-        autoComplete={autoComplete}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={cn(
-          "w-full rounded-xl border bg-surface-2 px-4 py-3 text-[15px] outline-none transition-colors",
-          "focus:border-brand-300 focus:ring-2 focus:ring-brand-100",
-          error ? "border-red-400" : "border-line",
+      <div className="relative">
+        <input
+          id={id}
+          type={inputType}
+          autoComplete={autoComplete}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={cn(
+            "w-full rounded-xl border bg-surface-2 px-4 py-3 text-[15px] outline-none transition-colors",
+            "focus:border-brand-300 focus:ring-2 focus:ring-brand-100",
+            isPassword && "pr-11",
+            error ? "border-red-400" : "border-line",
+          )}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setRevealed((v) => !v)}
+            aria-label={revealed ? "Hide password" : "Show password"}
+            aria-pressed={revealed}
+            tabIndex={-1}
+            className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-ink-400 transition-colors hover:text-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+          >
+            {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
         )}
-      />
+      </div>
       {hint && !error && (
         <p className="text-[11px] text-ink-300">{hint}</p>
       )}

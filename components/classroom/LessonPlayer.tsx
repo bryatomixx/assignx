@@ -435,6 +435,7 @@ function PlayerSurface({
   youtubeHostRef,
   countdownSec,
   isPlaying,
+  isIdle,
   countdownActive,
   pct,
   elapsed,
@@ -465,6 +466,7 @@ function PlayerSurface({
   youtubeHostRef?: React.RefObject<HTMLDivElement | null>;
   countdownSec: number;
   isPlaying: boolean;
+  isIdle: boolean;
   countdownActive: boolean;
   pct: number;
   elapsed: number;
@@ -503,9 +505,10 @@ function PlayerSurface({
         />
       )}
 
-      {/* Branded cover over the YouTube iframe while paused or idle. Hides
-          YouTube native overlay so there is only one set of controls. */}
-      {isYouTube && !isPlaying && (
+      {/* Branded cover over the YouTube iframe ONLY while idle (before the first
+          play), so it acts as a branded thumbnail. Once the video has started,
+          pausing shows the real frozen frame -- not the purple cover. */}
+      {isYouTube && isIdle && (
         <div className="absolute inset-0 z-[5]" aria-hidden="true">
           <div
             className="absolute inset-0 opacity-95"
@@ -1020,6 +1023,7 @@ function SimulatedClipPlayer({
       isYouTube={false}
       countdownSec={countdownSec}
       isPlaying={isPlaying}
+      isIdle={state === "idle"}
       countdownActive={countdownActive}
       pct={pct}
       elapsed={elapsed}
@@ -1244,6 +1248,7 @@ function YouTubeClipPlayer({
       youtubeHostRef={youtubeHostRef}
       countdownSec={countdownSec}
       isPlaying={isPlaying}
+      isIdle={state === "idle"}
       countdownActive={countdownActive}
       pct={pct}
       elapsed={elapsed}

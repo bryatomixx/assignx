@@ -94,8 +94,12 @@ export interface Lesson {
   kind?: "video" | "text";
   /** Teaching video URL (YouTube or Loom). Absent -> simulated placeholder player. */
   video?: string;
-  /** Short intro / description shown under the player. */
+  /** Short intro / description shown under the player. Supports [label](url) links and bare URLs. */
   content?: string;
+  /** Optional banner image (e.g. a sales-deck preview) shown above the content. Public path like "/decks/foo.png". */
+  image?: string;
+  /** Alt text for `image`. */
+  imageAlt?: string;
   /** Optional downloads / links. */
   resources?: Resource[];
   // ---- legacy (unused by the new module/lesson model, kept for type compat) ----

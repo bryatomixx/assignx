@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { LockedGate } from "@/components/classroom/LockedGate";
 import { ModuleNav } from "@/components/classroom/ModuleNav";
 import { LessonMedia } from "@/components/classroom/LessonMedia";
+import { RichContent } from "@/components/classroom/RichContent";
 
 // Entrance animation. The container fades only (no transform) so it never moves
 // the fixed-position player's placeholder; each block slides up in a stagger.
@@ -102,6 +103,21 @@ export default function LessonPage() {
               <h1 className="mt-2 text-2xl sm:text-3xl">{lesson.title}</h1>
             </motion.div>
 
+            {/* Optional banner image (e.g. a sales-deck preview), shown above the body. */}
+            {lesson.image && (
+              <motion.div
+                variants={itemVariants}
+                className="mt-5 overflow-hidden rounded-2xl border border-line"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={lesson.image}
+                  alt={lesson.imageAlt ?? lesson.title}
+                  className="block h-auto w-full"
+                />
+              </motion.div>
+            )}
+
             {/* Player (plain wrapper -- transform-free so the fixed player stays anchored) */}
             {!isText && (
               <div className="mt-5">
@@ -121,7 +137,7 @@ export default function LessonPage() {
                 variants={itemVariants}
                 className="mt-5 whitespace-pre-line leading-relaxed text-ink-700"
               >
-                {lesson.content}
+                <RichContent text={lesson.content} />
               </motion.div>
             )}
 
