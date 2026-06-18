@@ -52,44 +52,35 @@ export function PostVideo({ url }: { url: string }) {
     ? `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`
     : null;
 
+  // Click plays the video embedded here in the feed. There is no link out to
+  // YouTube/Loom by design -- the video stays in the app.
   return (
-    <div className="mt-3">
-      <button
-        type="button"
-        onClick={() => setPlaying(true)}
-        aria-label={`Play ${providerLabel} video`}
-        className="group relative block aspect-video w-full overflow-hidden rounded-xl border border-line bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
-      >
-        {thumb ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={thumb}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        ) : (
-          <div
-            className="absolute inset-0"
-            style={{ backgroundImage: "linear-gradient(135deg,#7802DF,#FF0BD6)" }}
-          />
-        )}
-        <div className="absolute inset-0 bg-black/20 transition-colors group-hover:bg-black/10" />
-        <span className="absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/25 backdrop-blur transition-transform group-hover:scale-105">
-          <Play className="h-6 w-6 translate-x-0.5 text-white" fill="white" stroke="none" />
-        </span>
-        <span className="absolute right-2 top-2 rounded-md bg-black/50 px-2 py-0.5 text-[10px] font-semibold text-white/80 backdrop-blur">
-          {providerLabel}
-        </span>
-      </button>
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-1.5 inline-flex max-w-full items-center gap-1.5 text-xs font-medium text-ink-400 transition-colors hover:text-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 rounded"
-      >
-        <ExternalLink className="h-3 w-3 shrink-0" />
-        <span className="truncate">Watch on {providerLabel}</span>
-      </a>
-    </div>
+    <button
+      type="button"
+      onClick={() => setPlaying(true)}
+      aria-label={`Play ${providerLabel} video`}
+      className="group relative mt-3 block aspect-video w-full overflow-hidden rounded-xl border border-line bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+    >
+      {thumb ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={thumb}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : (
+        <div
+          className="absolute inset-0"
+          style={{ backgroundImage: "linear-gradient(135deg,#7802DF,#FF0BD6)" }}
+        />
+      )}
+      <div className="absolute inset-0 bg-black/20 transition-colors group-hover:bg-black/10" />
+      <span className="absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/25 backdrop-blur transition-transform group-hover:scale-105">
+        <Play className="h-6 w-6 translate-x-0.5 text-white" fill="white" stroke="none" />
+      </span>
+      <span className="absolute right-2 top-2 rounded-md bg-black/50 px-2 py-0.5 text-[10px] font-semibold text-white/80 backdrop-blur">
+        {providerLabel}
+      </span>
+    </button>
   );
 }
