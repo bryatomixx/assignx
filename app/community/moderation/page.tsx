@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { RoleBadge } from "@/components/community/RoleBadge";
+import { BackToDashboard } from "@/components/admin/BackToDashboard";
 import { useBoard } from "@/lib/store/BoardProvider";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { cn, relativeTime } from "@/lib/utils";
@@ -130,6 +131,7 @@ export default function ModerationPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
       {/* Header */}
+      <BackToDashboard />
       <Link
         href="/community"
         className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-500 transition-colors hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 rounded"

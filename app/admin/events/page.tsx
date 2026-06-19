@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { AdminGuard } from "@/components/admin/AdminGuard";
+import { BackToDashboard } from "@/components/admin/BackToDashboard";
 import { Button } from "@/components/ui/Button";
 import {
   fetchEvents,
@@ -178,6 +179,7 @@ function EventsAdminContent() {
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-8 sm:px-8 sm:py-12">
+      <BackToDashboard />
       <p className="text-sm font-semibold uppercase tracking-wide text-brand-500">
         Admin
       </p>

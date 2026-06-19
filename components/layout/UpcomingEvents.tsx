@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { CalendarClock, ChevronUp, ExternalLink } from "lucide-react";
+import { CalendarClock, ChevronUp, ExternalLink, Plus } from "lucide-react";
 import { fetchEvents, EVENTS_CHANGED } from "@/lib/events/api";
 import {
   upcomingEvents,
@@ -10,6 +11,7 @@ import {
   formatTime12h,
 } from "@/lib/events/occurrence";
 import type { AcademyEvent } from "@/lib/events/types";
+import { useAcademy } from "@/lib/store/AcademyProvider";
 import { cn } from "@/lib/utils";
 
 /**
@@ -20,6 +22,8 @@ import { cn } from "@/lib/utils";
 export function UpcomingEvents() {
   const [open, setOpen] = useState(false);
   const [events, setEvents] = useState<AcademyEvent[]>([]);
+  const { currentUser } = useAcademy();
+  const isAdmin = currentUser?.role === "admin";
 
   useEffect(() => {
     let active = true;
@@ -93,26 +97,38 @@ export function UpcomingEvents() {
         )}
       </AnimatePresence>
 
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-1.5 rounded-xl px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-ink-500 transition-colors hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
-      >
-        <CalendarClock className="h-3.5 w-3.5 text-magenta" />
-        Upcoming Events
-        <span className="ml-auto flex items-center gap-1.5">
-          <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-100 px-1 text-[10px] font-bold text-brand-700">
-            {upcoming.length}
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex flex-1 items-center gap-1.5 rounded-xl px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-ink-500 transition-colors hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+        >
+          <CalendarClock className="h-3.5 w-3.5 text-magenta" />
+          Upcoming Events
+          <span className="ml-auto flex items-center gap-1.5">
+            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-100 px-1 text-[10px] font-bold text-brand-700">
+              {upcoming.length}
+            </span>
+            <ChevronUp
+              className={cn(
+                "h-3.5 w-3.5 transition-transform",
+                open && "rotate-180",
+              )}
+            />
           </span>
-          <ChevronUp
-            className={cn(
-              "h-3.5 w-3.5 transition-transform",
-              open && "rotate-180",
-            )}
-          />
-        </span>
-      </button>
+        </button>
+        {isAdmin && (
+          <Link
+            href="/admin/events"
+            aria-label="Manage events"
+            title="Create / manage events"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-400 transition-colors hover:bg-white hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+          >
+            <Plus className="h-4 w-4" />
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
 import { AdminGuard } from "@/components/admin/AdminGuard";
+import { BackToDashboard } from "@/components/admin/BackToDashboard";
 import { Avatar } from "@/components/ui/Avatar";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { fetchAuditLog } from "@/lib/admin/api";
@@ -302,6 +303,7 @@ function AuditContent() {
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
       {/* Header */}
+      <BackToDashboard />
       <p className="text-sm font-semibold uppercase tracking-wide text-brand-500">
         Admin
       </p>

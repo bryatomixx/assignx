@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { ChevronRight, Users, CheckCircle2 } from "lucide-react";
 import { useAcademy } from "@/lib/store/AcademyProvider";
 import { AdminGuard } from "@/components/admin/AdminGuard";
+import { BackToDashboard } from "@/components/admin/BackToDashboard";
 import { Avatar } from "@/components/ui/Avatar";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { formatDate } from "@/lib/utils";
@@ -20,6 +21,7 @@ function AdminContent() {
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
+      <BackToDashboard />
       <p className="text-sm font-semibold uppercase tracking-wide text-brand-500">
         Admin
       </p>
